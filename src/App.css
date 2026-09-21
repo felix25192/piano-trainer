@@ -89,3 +89,34 @@ body {
   border-radius: 10px;
   padding: 8px;
 }
+
+.mono {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+.dim { color: var(--muted); }
+
+.bar input[type="range"] {
+  width: 110px;
+  accent-color: var(--accent);
+}
+
+/* Live view of what the engine is waiting for. */
+.readout {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--muted);
+}
+
+.readout b { color: var(--ink); font-weight: 600; }
+
+.readout-error {
+  border-color: var(--bad);
+  background: #2a1a1d;
+}

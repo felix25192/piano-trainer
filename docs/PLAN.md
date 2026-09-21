@@ -187,3 +187,52 @@ relevant erst bei Metronom oder Timing-Auswertung.
 - **Spike A** (Mikrofonzugriff auf dem iPad) steht noch aus, braucht das Gerät.
 - Darstellungsgröße: aktuell sind deutlich mehr als 2–3 Takte im Bild.
   OSMD bietet `osmd.zoom` — gehört in Phase 1.
+
+---
+
+## Kern gebaut (22.09.2026)
+
+Aus dem Architekturbild ist Code geworden. Der Kern liegt in `src/core/`
+und hat keine einzige Abhängigkeit zu React, OSMD, Audio oder DOM.
+
+| Datei | Aufgabe |
+|---|---|
+| `core/pitch.ts` | MIDI-Nummern, Notennamen, Frequenzen, Cent-Abweichung |
+| `core/score.ts` | Notenmodell: Schritte, erwartete Töne, Takte |
+| `core/NoteInputSource.ts` | **Der Port.** Die Schnittstelle, über die gespielte Töne hereinkommen |
+| `core/NoteMatcher.ts` | Abgleichlogik: richtig → weiter, falsch → stehen bleiben |
+| `adapters/osmdScore.ts` | Übersetzt OSMDs Objektgraph ins Notenmodell |
+
+**39 Tests, alle grün.** Getestet wird ausschließlich der Kern — Adapter
+bleiben absichtlich dünn genug, dass dort nichts zu testen ist.
+
+### Verhalten des Abgleichs
+
+- Ein Akkord gilt erst als gespielt, wenn **alle** erwarteten Töne da sind,
+  Reihenfolge egal.
+- Ein falscher Ton hält an und setzt einen Fehlerzustand. Bereits richtig
+  gespielte Töne des Akkords bleiben erhalten — man muss nicht von vorn
+  anfangen.
+- Der nächste richtige Ton löscht den Fehler.
+- Pausen brauchen keine Eingabe und werden übersprungen. Diese Regel steht
+  an genau einer Stelle (`skipSilent`).
+- Eine Vertrauensschwelle filtert unsichere Erkennungen weg. MIDI meldet
+  immer 1, die Schwelle betrifft also nur das Mikrofon — der Kern weiß
+  trotzdem nichts über Audio.
+- Derselbe Ton in beiden Systemen notiert ist **eine** Taste, nicht zwei.
+
+### Offene Frage aus den Tests
+
+Liegt eine gemessene Frequenz exakt zwischen zwei Tasten (50 Cent), ist
+keine Antwort richtiger als die andere. `Math.round` rundet nach oben; das
+ist jetzt per Test festgeschrieben, damit es eine Entscheidung ist und kein
+Zufall. Der Mikrofon-Adapter sollte so weit verstimmte Töne ohnehin
+verwerfen.
+
+### Noch nicht gelöst
+
+- **Gebundene und gehaltene Töne.** Wird ein Ton über den Taktstrich
+  gehalten, kommt kein neues MIDI-Ereignis. Der Abgleich würde warten.
+- **Vorausspielen.** Wer den nächsten Ton zu früh anschlägt, bekommt
+  aktuell "falsch". Ob das richtig ist, muss die Praxis zeigen.
+- **Verzierungen und Triller** sind im Notenmodell ganz normale Schritte.
