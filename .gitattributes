@@ -1,0 +1,12 @@
+# Einheitliche Zeilenenden im Repository (LF), unabhaengig vom Betriebssystem
+* text=auto eol=lf
+
+# Binaerdateien nicht anfassen
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+*.mp3   binary
+*.wav   binary
+*.mxl   binary
