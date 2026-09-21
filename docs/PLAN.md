@@ -142,3 +142,48 @@ iPad auf dem Notenpult, ES520 kabellos, exakte Erkennung ohne Mikrofon.
 - Wird der Rhythmus bewertet oder nur die Tonfolge? Aktuell: nur Tonfolge,
   die Anzeige folgt dem Spieler, nicht einem Metronom.
 - Wie wird mit Verzierungen, Trillern und Pedalangaben umgegangen?
+
+---
+
+## Spike-Ergebnisse (21.09.2026)
+
+### Spike B — Notenrendering: bestanden
+
+OSMD 2.1.3 mit `EngravingRules.RenderSingleHorizontalStaffline = true`
+setzt eine komplette Partitur als eine durchgehende horizontale Zeile.
+Damit ist das größte Risiko des Projekts vom Tisch.
+
+Geprüft an Beethoven Op. 27 Nr. 2, 1. Satz:
+
+| Prüfpunkt | Ergebnis |
+|---|---|
+| Violin- und Bassschlüssel übereinander, mit Klammer | korrekt |
+| Vier Kreuze in beiden Systemen | korrekt |
+| Triolen mit Zahl und Balkung | korrekt |
+| Taktsymbol alla breve (¢) | korrekt |
+| Dynamik und Beethovens Spielanweisung | vorhanden |
+| Cursor schaltet Note für Note weiter | funktioniert |
+| Erwartete Töne als MIDI-Nummern auslesbar | funktioniert |
+| Seitliches Mitlaufen beim Weiterschalten | funktioniert |
+
+Stichprobe der Tonhöhen gegen die Partitur:
+- Takt 1: gis (56), cis (37), cis (49) — Auftakt-Triole und Bassoktave
+- Takt 3: gis (56), h (35), h (47) — Bass wechselt auf H
+
+Der Zugriff läuft über `osmd.cursor.NotesUnderCursor()`. Die
+MIDI-Nummer ergibt sich aus `Pitch.getHalfTone() + 12`. Das ist die
+Schnittstelle, an der später die Abgleichlogik andockt.
+
+### Korrektur zur Taktart
+
+Frühere Notiz war unvollständig: Die Datei enthält `<time symbol="cut">`,
+das Taktsymbol wird also richtig als ¢ dargestellt. Lediglich die
+darunterliegende Zählzeit steht auf 4/4 statt 2/2 — eine Eigenheit von
+MuseScore 2. Für Notenlesen ohne Rhythmusbewertung ohne Bedeutung;
+relevant erst bei Metronom oder Timing-Auswertung.
+
+### Offen aus Phase 0
+
+- **Spike A** (Mikrofonzugriff auf dem iPad) steht noch aus, braucht das Gerät.
+- Darstellungsgröße: aktuell sind deutlich mehr als 2–3 Takte im Bild.
+  OSMD bietet `osmd.zoom` — gehört in Phase 1.
