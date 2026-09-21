@@ -236,3 +236,25 @@ verwerfen.
 - **Vorausspielen.** Wer den nächsten Ton zu früh anschlägt, bekommt
   aktuell "falsch". Ob das richtig ist, muss die Praxis zeigen.
 - **Verzierungen und Triller** sind im Notenmodell ganz normale Schritte.
+
+## MIDI-Adapter und Spike-A-Testseite (22.09.2026)
+
+`adapters/MidiInput.ts` implementiert den Port über die Web MIDI API.
+Rund achtzig Zeilen, und der Kern merkt nicht, dass er sie benutzt.
+
+Zwei Eigenheiten, die im Code stehen, weil sie sonst Zeit kosten:
+- Die meisten Klaviere — auch die Kawai-ES-Reihe — beenden einen Ton mit
+  *note-on und Anschlagstärke null* statt mit einem echten note-off. Wer
+  nur auf das Statusbyte schaut, bekommt doppelte Anschläge.
+- `sysex: false` beim Anfordern der Berechtigung, sonst erscheint eine
+  deutlich abschreckendere Rückfrage im Browser.
+
+`public/mic-test.html` ist die Testseite für Spike A: eigenständig, ohne
+Build, aufrufbar unter `/mic-test.html`. Sie prüft sicheren Kontext,
+getUserMedia, AudioContext, AudioWorklet, Web MIDI und ob die Seite vom
+Homescreen aus läuft — und erkennt danach live Tonhöhen per
+Autokorrelation.
+
+**Noch offen: auf dem iPad aufrufen.** Dafür muss der Entwicklungsserver
+im WLAN erreichbar sein (`vite --host`), was die Firmen-Firewall
+blockieren könnte.

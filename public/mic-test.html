@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>Mikrofon-Test</title>
+<style>
+  :root {
+    --bg: #12141a; --panel: #1b1f28; --ink: #e8eaf0; --muted: #8b93a7;
+    --ok: #3ecf8e; --bad: #ff6b6b; --accent: #5b8cff;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 16px; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, sans-serif;
+  }
+  h1 { font-size: 20px; margin: 4px 0 16px; }
+  .card { background: var(--panel); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; }
+  .row span:first-child { color: var(--muted); }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  button {
+    width: 100%; padding: 18px; font: 600 17px system-ui; border: 0; border-radius: 12px;
+    background: var(--accent); color: #fff; cursor: pointer;
+  }
+  button:disabled { background: #333a49; color: var(--muted); }
+  .note { font: 700 52px ui-monospace, Menlo, monospace; text-align: center; margin: 10px 0 2px; }
+  .cents { text-align: center; color: var(--muted); font: 13px ui-monospace, monospace; }
+  .meter { height: 10px; background: #262b36; border-radius: 5px; overflow: hidden; margin-top: 14px; }
+  .meter div { height: 100%; width: 0%; background: var(--accent); transition: width .06s; }
+  pre { white-space: pre-wrap; color: var(--bad); font-size: 13px; margin: 8px 0 0; }
+</style>
+</head>
+<body>
+
+<h1>Mikrofon-Test</h1>
+
+<div class="card" id="env"></div>
+
+<div class="card">
+  <button id="go">Mikrofon starten</button>
+  <pre id="err" hidden></pre>
+</div>
+
+<div class="card">
+  <div class="note" id="note">—</div>
+  <div class="cents" id="cents">noch nicht gestartet</div>
+  <div class="meter"><div id="level"></div></div>
+</div>
+
+<script>
+const NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const $ = (id) => document.getElementById(id);
+
+// --- Umgebung prüfen -------------------------------------------------------
+const standalone = window.navigator.standalone === true ||
+  window.matchMedia("(display-mode: standalone)").matches;
+
+const checks = [
+  ["Sicherer Kontext (HTTPS/localhost)", window.isSecureContext],
+  ["getUserMedia vorhanden", !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)],
+  ["AudioContext vorhanden", !!(window.AudioContext || window.webkitAudioContext)],
+  // Den Wert auszulesen wirft "Illegal invocation" - nur auf Existenz pruefen.
+  ["AudioWorklet vorhanden", !!window.AudioContext && "audioWorklet" in AudioContext.prototype],
+  ["Web MIDI vorhanden", typeof navigator.requestMIDIAccess === "function"],
+];
+
+$("env").innerHTML =
+  checks.map(([label, ok]) =>
+    `<div class="row"><span>${label}</span><span class="${ok ? "ok" : "bad"}">${ok ? "ja" : "nein"}</span></div>`
+  ).join("") +
+  `<div class="row"><span>Vom Homescreen gestartet</span><span>${standalone ? "ja" : "nein"}</span></div>` +
+  `<div class="row"><span>Browser</span><span style="font-size:12px;text-align:right">${navigator.userAgent.slice(0, 60)}</span></div>`;
+
+// --- Mikrofon --------------------------------------------------------------
+// iOS verlangt eine echte Nutzergeste, bevor Audio laufen darf. Deshalb der Knopf.
+$("go").addEventListener("click", async () => {
+  const btn = $("go");
+  btn.disabled = true;
+  btn.textContent = "wird gestartet …";
+  $("err").hidden = true;
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,   // würde Klaviertöne zerstören
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+    });
+
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    // Safari startet den Kontext gelegentlich angehalten.
+    if (ctx.state === "suspended") await ctx.resume();
+
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 4096;
+    ctx.createMediaStreamSource(stream).connect(analyser);
+
+    btn.textContent = `läuft — ${Math.round(ctx.sampleRate)} Hz`;
+    $("cents").textContent = "spiel einen Ton";
+    loop(analyser, ctx.sampleRate);
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = "Mikrofon starten";
+    $("err").hidden = false;
+    $("err").textContent = `${e.name}: ${e.message}`;
+  }
+});
+
+function loop(analyser, sampleRate) {
+  const buf = new Float32Array(analyser.fftSize);
+
+  function frame() {
+    analyser.getFloatTimeDomainData(buf);
+
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+    const rms = Math.sqrt(sum / buf.length);
+    $("level").style.width = Math.min(100, rms * 600) + "%";
+
+    if (rms > 0.006) {
+      const hz = detectPitch(buf, sampleRate);
+      if (hz > 0) {
+        const exact = 69 + 12 * Math.log2(hz / 440);
+        const midi = Math.round(exact);
+        const cents = Math.round((exact - midi) * 100);
+        $("note").textContent = NAMES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
+        $("cents").textContent = `${hz.toFixed(1)} Hz · ${cents >= 0 ? "+" : ""}${cents} Cent · MIDI ${midi}`;
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+/**
+ * Autokorrelation — grob, aber genug um zu zeigen, dass Töne ankommen.
+ * Der echte Detektor kommt später in einen AudioWorklet und arbeitet
+ * gegen die erwarteten Töne statt frei zu raten.
+ */
+function detectPitch(buf, sampleRate) {
+  const SIZE = buf.length;
+  let best = -1, bestCorr = 0, lastCorr = 1;
+
+  for (let offset = 8; offset < SIZE / 2; offset++) {
+    let corr = 0;
+    for (let i = 0; i < SIZE / 2; i++) corr += buf[i] * buf[i + offset];
+    corr /= SIZE / 2;
+
+    if (corr > 0.9 * bestCorr && corr > lastCorr) {
+      if (corr > bestCorr) { bestCorr = corr; best = offset; }
+    } else if (best > -1 && corr < lastCorr && bestCorr > 0.0015) {
+      break;
+    }
+    lastCorr = corr;
+  }
+  return best > 0 ? sampleRate / best : -1;
+}
+</script>
+</body>
+</html>
