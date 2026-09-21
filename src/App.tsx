@@ -40,7 +40,9 @@ export default function App() {
     // layout-mode switches.
     host.innerHTML = "";
     const osmd = new OpenSheetMusicDisplay(host, {
-      autoResize: false,
+      // Re-engrave when the viewport changes — the target device is a tablet
+      // that gets rotated mid-practice.
+      autoResize: true,
       backend: "svg",
       drawTitle: true,
       drawComposer: true,
@@ -57,7 +59,6 @@ export default function App() {
         setStatus("rendering");
         osmd.render();
         osmd.cursor.show();
-        if (cancelled) return;
         setStatus("ready");
         describeCursor(osmd, setCursorInfo);
       })
@@ -69,6 +70,15 @@ export default function App() {
 
     return () => {
       cancelled = true;
+      // Release the parsed score graph. Without this, StrictMode's double
+      // mount and every score switch leave an orphaned instance behind,
+      // each holding a full MusicXML tree.
+      try {
+        osmd.clear();
+      } catch {
+        // Instance was torn down before it finished loading — nothing to free.
+      }
+      if (osmdRef.current === osmd) osmdRef.current = null;
     };
   }, [scoreUrl, singleLine]);
 
@@ -81,12 +91,17 @@ export default function App() {
     scrollCursorIntoView(osmd, scrollRef.current);
   }
 
-  // Space bar advances — the manual stand-in for "you played the right note".
+  // The keydown listener is registered once, so it must not close over `step`
+  // directly — it would freeze on the first render's copy. The ref keeps the
+  // space bar and the buttons on the same code path.
+  const stepRef = useRef(step);
+  stepRef.current = step;
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.code !== "Space") return;
       e.preventDefault();
-      step("next");
+      stepRef.current("next");
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -142,6 +157,7 @@ function describeCursor(
       .filter((n) => !n.isRest())
       .map((n) => {
         const p = n.Pitch;
+        // OSMD counts half tones from C0, MIDI counts from C-1, hence +12.
         return p ? `${p.ToString()} (MIDI ${p.getHalfTone() + 12})` : "?";
       });
     set(described.length ? described.join(", ") : "(rest)");
@@ -158,6 +174,14 @@ function scrollCursorIntoView(
   if (!scroller) return;
   const el = osmd.cursor?.cursorElement as HTMLElement | undefined;
   if (!el) return;
-  const target = el.offsetLeft - scroller.clientWidth / 3;
+
+  // Measure both in viewport coordinates, then convert to the scroller's own
+  // scroll axis. Using offsetLeft would silently mix coordinate systems, since
+  // the cursor's offset parent is OSMD's container, not the scroller.
+  const cursorLeft = el.getBoundingClientRect().left;
+  const scrollerLeft = scroller.getBoundingClientRect().left;
+  const target =
+    scroller.scrollLeft + (cursorLeft - scrollerLeft) - scroller.clientWidth / 3;
+
   scroller.scrollTo({ left: Math.max(0, target), behavior: "smooth" });
 }
