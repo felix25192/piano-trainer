@@ -1,0 +1,91 @@
+:root {
+  --bg: #12141a;
+  --panel: #1b1f28;
+  --ink: #e8eaf0;
+  --muted: #8b93a7;
+  --accent: #5b8cff;
+  --ok: #3ecf8e;
+  --bad: #ff6b6b;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 16px;
+  gap: 12px;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px;
+  background: var(--panel);
+  border-radius: 10px;
+}
+
+.bar select,
+.bar button {
+  background: #262b36;
+  color: var(--ink);
+  border: 1px solid #333a49;
+  border-radius: 7px;
+  padding: 7px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.bar button:hover { border-color: var(--accent); }
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.status {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.status-ready  { color: var(--ok); }
+.status-failed { color: var(--bad); }
+
+.cursor-info {
+  margin: 0;
+  color: var(--muted);
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+.error {
+  margin: 0;
+  padding: 12px;
+  background: #2a1a1d;
+  border: 1px solid var(--bad);
+  border-radius: 8px;
+  color: var(--bad);
+  white-space: pre-wrap;
+}
+
+/* The horizontal viewport. OSMD draws one very wide SVG inside this. */
+.scroller {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px;
+}
