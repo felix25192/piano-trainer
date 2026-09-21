@@ -13,7 +13,21 @@ No accounts, no gamification, no pressure.
 
 ## Status
 
-Early development. Nothing works yet.
+Early development, but the hard parts are answered.
+
+Scores render as one continuous horizontal staff line with both clefs and
+correct accidentals, and the engine knows which notes it is waiting for at
+every position. Chords require every note before the cursor moves; a wrong
+note stops it. No instrument is attached yet — two buttons stand in for one
+while the MIDI adapter waits for a cable.
+
+```bash
+npm install && npm run dev   # the app
+npm test                     # 39 tests over the engine
+```
+
+Open `/mic-test.html` on a phone or tablet to check whether that device can
+supply microphone input at all.
 
 ## Planned approach
 
