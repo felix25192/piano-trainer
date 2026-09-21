@@ -1,0 +1,144 @@
+# Projektplan
+
+Stand: 21.09.2026
+
+## Ziel
+
+Eine App zum Notenlesen-Lernen am Klavier. Noten laufen horizontal durch,
+zwei bis drei Takte gleichzeitig sichtbar, Violin- und Bassschlüssel. Die
+Anzeige schaltet weiter, sobald der richtige Ton gespielt wurde, und bleibt
+bei einem falschen Ton stehen.
+
+Kein Belohnungssystem, keine Streaks, kein Konto. Nur Notenlesen.
+
+## Hardware
+
+- **Kawai ES520** — USB to Host (USB-MIDI, klassenkonform, kein Treiber
+  nötig), zusätzlich Bluetooth MIDI. Keine USB-Audioschnittstelle, über USB
+  kommen nur Notendaten.
+- Zweitinstrument: akustisches Klavier → hierfür ist das Mikrofon der einzige
+  Weg.
+- Zielgerät zum Üben: iPad / iPhone.
+- Entwicklungsrechner: Windows 11, keine Admin-Rechte.
+
+## Recherchierte Randbedingungen
+
+Diese Punkte wurden geprüft, nicht angenommen:
+
+1. **Safari unterstützt kein Web MIDI.** Weder auf iOS noch auf macOS, in
+   keiner Version bis einschließlich 27. Chrome, Edge und Firefox können es.
+   → In der Web-App ist MIDI nur am Desktop verfügbar. Auf dem iPad bleibt
+   das Mikrofon — oder später eine native App mit CoreMIDI-Brücke.
+
+2. **Mikrofonzugriff in Homescreen-Web-Apps auf iOS ist unzuverlässig.**
+   WebKit-Fehler 185448, seit Jahren offen, Berichte je nach iOS-Version
+   unterschiedlich. → Muss früh getestet werden. Notfalls läuft die App im
+   normalen Safari-Tab.
+
+3. **MusicXML ist das richtige Eingabeformat.** Es trennt Tonhöhe von
+   Notation und enthält Vorzeichen, enharmonische Schreibung, Stimmen und
+   Balkung. MIDI kennt nur Tastennummern — daraus korrekten Notensatz zu
+   erzeugen wäre Raten. Gescannte PDFs bräuchten Notenerkennung (OMR), ein
+   eigenes Forschungsfeld mit unzuverlässigem Ergebnis.
+
+4. **Quellen für gemeinfreie MusicXML-Dateien:** OpenScore (CC0, Partnerschaft
+   von MuseScore und IMSLP), Mutopia, github.com/musetrainer/library.
+   Konkrete Beschaffung der Mondschein-Sonate steht noch aus.
+
+## Zentrale Entscheidungen
+
+### Web-Technologie, nicht nativ
+
+Die einzigen ausgereiften Notensatz-Bibliotheken leben im Web-Ökosystem
+(VexFlow, OpenSheetMusicDisplay, abcjs). Ein natives React-Native-Projekt
+bräuchte für die Noten trotzdem eine WebView und hätte damit die Komplexität
+von beidem. Capacitor verpackt später denselben Code nach iOS und Android.
+
+### Engine ohne Framework
+
+Notenmodell, Eingabeverarbeitung und Abgleichlogik sind reines TypeScript,
+ohne React und ohne DOM. Die Oberfläche hört nur zu.
+
+Gründe: testbar ohne Browser; eine Audioschleife mit 50 Hz reißt nicht die
+Oberfläche in Stücke; beide Eingabewege stecken hinter derselben Schnittstelle.
+
+```ts
+interface NoteInputSource {
+  start(): Promise<void>;
+  onNoteOn(cb: (n: { midi: number; time: number }) => void): void;
+}
+```
+
+### Verifikation statt Transkription
+
+Das Mikrofon-Modul fragt nie "welche Töne werden gerade gespielt?" — das wäre
+polyphone Transkription, ein ungelöstes Problem. Es fragt "sind die erwarteten
+Töne da, und klingt nichts Fremdes dazwischen?". Das ist Spektralanalyse mit
+harmonischen Vorlagen und Schwellenwerten.
+
+### MIDI als Entwicklungslabor
+
+Am Desktop liefert Web MIDI exakte Tastenanschläge. Damit wird die App
+vollständig gebaut, bevor Signalverarbeitung überhaupt beginnt. Danach dient
+MIDI als Referenzquelle: dieselbe Passage über MIDI und Mikrofon gleichzeitig
+aufnehmen und die Erkennungsergebnisse vergleichen.
+
+## Modulstruktur
+
+```
+score/      MusicXML laden, Notenmodell, "was wird als nächstes erwartet"
+render/     OSMD-Wrapper, horizontales Scrollen, Cursor
+input/      NoteInputSource-Schnittstelle
+            ├─ MidiInput   (Desktop, exakt)
+            └─ MicInput    (iPad, Spektralanalyse)
+match/      Abgleich erwartet vs. gespielt, Fortschritt, Fehlerzustand
+practice/   Session-Steuerung, Tonleiter-Generator
+ui/         React-Komponenten
+```
+
+## Phasen
+
+### Phase 0 — Risiken abklopfen
+Bevor irgendetwas gebaut wird:
+- **Spike A:** Mikrofonzugriff auf dem iPad testen, im Safari-Tab *und* als
+  Homescreen-App. Klärt Randbedingung 2.
+- **Spike B:** OSMD mit echter MusicXML-Datei, ein System, horizontal
+  scrollbar. Klärt das größte Rendering-Risiko.
+- Mondschein-Sonate als MusicXML beschaffen.
+
+### Phase 1 — Noten auf dem Schirm
+MusicXML laden, korrekt gesetzt mit beiden Schlüsseln und richtigen
+Vorzeichen. Zwei bis drei Takte sichtbar. Cursor per Leertaste weiter.
+
+Bereits hier nutzbar: mitlesen im eigenen Tempo. Kein Instrument nötig.
+
+### Phase 2 — MIDI-Eingabe
+`NoteInputSource` und `MidiInput`. Abgleichlogik: ein Akkord gilt als richtig,
+wenn alle erwarteten Töne vorhanden sind. Richtig → weiter, falsch → stehen
+bleiben und Stelle markieren.
+
+Danach ist die App funktional vollständig — am Desktop, mit Kabel.
+
+### Phase 3 — Mikrofon
+AudioWorklet mit Ringpuffer. Erst einstimmig (YIN oder MPM), damit laufen
+Tonleitern. Dann Akkordprüfung über FFT und harmonische Vorlagen der
+erwarteten Töne. Kalibrierung für Grundrauschen und Empfindlichkeit.
+Gegner: Pedal, Nachklang, Obertöne, Resonanz.
+
+Aufwand in Wochen, nicht Tagen.
+
+### Phase 4 — Übungen und Komfort
+Tonleitern und Fingerübungen programmatisch erzeugen statt als Dateien
+ablegen: eine Funktion, die aus Tonart, Umfang und Muster ein Notenmodell
+baut. Bibliothek mehrerer Stücke, Abschnitte üben (Takt X bis Y).
+
+### Phase 5 — Native App
+Capacitor nach iOS und Android. Dort steht auch Bluetooth MIDI offen —
+iPad auf dem Notenpult, ES520 kabellos, exakte Erkennung ohne Mikrofon.
+
+## Offene Fragen
+
+- Wie verhält sich das horizontale Endlos-Scrollen mit OSMD? (Spike B)
+- Wird der Rhythmus bewertet oder nur die Tonfolge? Aktuell: nur Tonfolge,
+  die Anzeige folgt dem Spieler, nicht einem Metronom.
+- Wie wird mit Verzierungen, Trillern und Pedalangaben umgegangen?
