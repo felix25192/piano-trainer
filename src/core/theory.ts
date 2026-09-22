@@ -112,6 +112,21 @@ export function scaleDegrees(key: Key, startOctave: number): Pitch[] {
   });
 }
 
+/**
+ * A scale ascending over several octaves, closing on the tonic above.
+ *
+ * Two octaves therefore yield fifteen notes, not fourteen: a scale is played
+ * up to its own tonic, and that closing note is what the fifth finger takes.
+ */
+export function ascendingScale(key: Key, startOctave: number, octaves: number): Pitch[] {
+  const pitches: Pitch[] = [];
+  for (let o = 0; o < octaves; o++) {
+    pitches.push(...scaleDegrees(key, startOctave + o));
+  }
+  pitches.push(scaleDegrees(key, startOctave + octaves)[0]);
+  return pitches;
+}
+
 /** Builds a key from its tonic and mode, deriving the signature. */
 export function keyOf(tonic: Letter, tonicAlter: number, mode: Mode): Key {
   const fifths =
