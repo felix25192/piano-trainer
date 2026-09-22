@@ -3,7 +3,7 @@ import type { ExpectedNote, Score, ScoreStep } from "../core/score";
 
 /**
  * Translates what OpenSheetMusicDisplay parsed into the engine's own score
- * model.
+ * model, and records where each step sits along the staff line.
  *
  * This is an adapter, and it is deliberately the only file in the project that
  * is allowed to know about OSMD's object graph. Keep it thin: it walks, it
@@ -17,9 +17,32 @@ import type { ExpectedNote, Score, ScoreStep } from "../core/score";
  */
 const MAX_STEPS = 100_000;
 
-export function extractScore(osmd: OpenSheetMusicDisplay, title: string): Score {
+export interface ReadScore {
+  score: Score;
+  /**
+   * Where each step sits horizontally, as a fraction of the whole staff line
+   * from 0 to 1 — not as pixels.
+   *
+   * Pixels would be wrong the moment the engraving is re-rendered at a
+   * different zoom, and the app re-renders on every rotation. Proportions
+   * survive that, because OSMD scales the whole layout uniformly. Turning one
+   * back into a pixel position is a multiplication by the current width.
+   */
+  anchors: number[];
+}
+
+export function extractScore(
+  osmd: OpenSheetMusicDisplay,
+  title: string,
+  /** The element OSMD renders into. Its own `container` is protected. */
+  host: HTMLElement | null,
+): ReadScore {
   const steps: ScoreStep[] = [];
+  const anchors: number[] = [];
   const cursor = osmd.cursor;
+
+  // One layout read for the whole walk; everything after this is arithmetic.
+  const sheetWidth = host?.querySelector("svg")?.getBoundingClientRect().width ?? 0;
 
   cursor.reset();
 
@@ -29,6 +52,7 @@ export function extractScore(osmd: OpenSheetMusicDisplay, title: string): Score 
       measure: currentMeasure(cursor),
       notes: notesUnderCursor(cursor),
     });
+    anchors.push(sheetWidth > 0 ? cursorFraction(cursor, sheetWidth) : 0);
     cursor.next();
   }
 
@@ -42,7 +66,28 @@ export function extractScore(osmd: OpenSheetMusicDisplay, title: string): Score 
     );
   }
 
-  return { title, steps };
+  return { score: { title, steps }, anchors };
+}
+
+/** Finds the step nearest a point given as a fraction of the staff line. */
+export function stepAtFraction(anchors: number[], fraction: number): number {
+  if (anchors.length === 0) return 0;
+
+  // Anchors are produced in order, so a binary search is safe.
+  let lo = 0;
+  let hi = anchors.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (anchors[mid] < fraction) lo = mid + 1;
+    else hi = mid;
+  }
+
+  // `lo` is the first anchor at or past the point; the one before it may be
+  // closer. A tap lands between two notes as often as on one.
+  if (lo > 0 && Math.abs(anchors[lo - 1] - fraction) <= Math.abs(anchors[lo] - fraction)) {
+    return lo - 1;
+  }
+  return lo;
 }
 
 type Cursor = OpenSheetMusicDisplay["cursor"];
@@ -60,6 +105,22 @@ function currentMeasure(cursor: Cursor): number {
   }).iterator;
   // OSMD counts measures from zero; printed scores count from one.
   return (iterator?.CurrentMeasureIndex ?? 0) + 1;
+}
+
+/**
+ * Horizontal position of the cursor as a fraction of the sheet width.
+ *
+ * Reads the inline style rather than `offsetLeft`, because OSMD sets that
+ * style itself and reading the string costs nothing — `offsetLeft` would force
+ * the browser to lay the page out again on every one of several hundred steps.
+ */
+function cursorFraction(cursor: Cursor, sheetWidth: number): number {
+  const el = (cursor as unknown as { cursorElement?: HTMLElement }).cursorElement;
+  if (!el) return 0;
+
+  const styled = Number.parseFloat(el.style.left);
+  const left = Number.isFinite(styled) ? styled : el.offsetLeft;
+  return left / sheetWidth;
 }
 
 function notesUnderCursor(cursor: Cursor): ExpectedNote[] {

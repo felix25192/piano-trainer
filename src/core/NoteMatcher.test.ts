@@ -195,6 +195,47 @@ describe("navigation", () => {
     matcher.seekToMeasure(99);
     expect(matcher.finished).toBe(true);
   });
+
+  it("jumps to a step by index", () => {
+    const matcher = new NoteMatcher(score);
+    matcher.seekToStep(2);
+    expect(matcher.currentStep?.index).toBe(2);
+    expect(matcher.noteOn(played(64)).kind).toBe("advanced");
+  });
+
+  it("clamps a tap that lands before the first note", () => {
+    const matcher = new NoteMatcher(score);
+    matcher.seekToStep(-5);
+    expect(matcher.currentStep?.index).toBe(0);
+  });
+
+  it("clamps a tap past the last note instead of refusing it", () => {
+    const matcher = new NoteMatcher(score);
+    matcher.seekToStep(999);
+    expect(matcher.finished).toBe(true);
+  });
+
+  it("rounds a fractional index, since it comes from a pixel measurement", () => {
+    const matcher = new NoteMatcher(score);
+    matcher.seekToStep(1.6);
+    expect(matcher.currentStep?.index).toBe(2);
+  });
+
+  it("moves on when the tapped step is a rest", () => {
+    const withRest = scoreOf(step(0, 1, 60), step(1, 1), step(2, 2, 62));
+    const matcher = new NoteMatcher(withRest);
+    matcher.seekToStep(1);
+    expect(matcher.currentStep?.index).toBe(2);
+  });
+
+  it("clears a pending error when jumping", () => {
+    const matcher = new NoteMatcher(score);
+    matcher.noteOn(played(99));
+    expect(matcher.hasError).toBe(true);
+
+    matcher.seekToStep(2);
+    expect(matcher.hasError).toBe(false);
+  });
 });
 
 describe("the opening of the Moonlight Sonata", () => {

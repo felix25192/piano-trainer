@@ -3,7 +3,7 @@ import { OpenSheetMusicDisplay } from "opensheetmusicdisplay";
 import { NoteMatcher, type MatchOutcome } from "./core/NoteMatcher";
 import { midiToName } from "./core/pitch";
 import type { Score } from "./core/score";
-import { extractScore } from "./adapters/osmdScore";
+import { extractScore, stepAtFraction } from "./adapters/osmdScore";
 import "./App.css";
 
 /**
@@ -43,6 +43,10 @@ export default function App() {
   const cursorIndexRef = useRef(0);
   /** Guards against the resize observer re-entering while a fit is running. */
   const fittingRef = useRef(false);
+  /** Where each step sits along the line, as a fraction of the total width. */
+  const anchorsRef = useRef<number[]>([]);
+  /** Start of the current pointer gesture, to tell a tap from a scroll swipe. */
+  const pressRef = useRef<{ x: number; y: number } | null>(null);
 
   const [scoreUrl, setScoreUrl] = useState<string>(SCORES[0].url);
   const [zoom, setZoom] = useState(1.2);
@@ -143,9 +147,10 @@ export default function App() {
         osmd.cursor.show();
 
         const label = SCORES.find((s) => s.url === scoreUrl)?.label ?? scoreUrl;
-        const extracted = extractScore(osmd, label);
+        const { score: extracted, anchors } = extractScore(osmd, label, host);
 
         matcherRef.current = new NoteMatcher(extracted);
+        anchorsRef.current = anchors;
         setScore(extracted);
         setStatus("bereit");
 
@@ -244,6 +249,41 @@ export default function App() {
     setTick((t) => t + 1);
   }, [restoreCursor]);
 
+  // A tap in the score starts from there. Practising means repeating one
+  // awkward bar, not the opening.
+  const onScorePointerDown = useCallback((e: React.PointerEvent) => {
+    pressRef.current = { x: e.clientX, y: e.clientY };
+  }, []);
+
+  const onScorePointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      const press = pressRef.current;
+      pressRef.current = null;
+      if (!press) return;
+
+      // Scrolling the score is a swipe and must not move the position. Only a
+      // gesture that stayed put counts as aiming at a note.
+      const moved = Math.hypot(e.clientX - press.x, e.clientY - press.y);
+      if (moved > 10) return;
+
+      const matcher = matcherRef.current;
+      const svg = scrollRef.current?.querySelector("svg");
+      if (!matcher || !svg) return;
+
+      const box = svg.getBoundingClientRect();
+      if (box.width <= 0) return;
+
+      const fraction = (e.clientX - box.left) / box.width;
+      matcher.seekToStep(stepAtFraction(anchorsRef.current, fraction));
+
+      restoreCursor();
+      scrollCursorIntoView(osmdRef.current, scrollRef.current, "smooth");
+      setLastOutcome(null);
+      setTick((t) => t + 1);
+    },
+    [restoreCursor],
+  );
+
   // Registered once; the ref keeps the space bar on the same path as the button.
   const playCorrectRef = useRef(playCorrect);
   playCorrectRef.current = playCorrect;
@@ -295,7 +335,13 @@ export default function App() {
 
       {error && <pre className="error-box">{error}</pre>}
 
-      <div className="scroller" ref={scrollRef}>
+      <div
+        className="scroller"
+        ref={scrollRef}
+        onPointerDown={onScorePointerDown}
+        onPointerUp={onScorePointerUp}
+        onPointerCancel={() => (pressRef.current = null)}
+      >
         <div ref={hostRef} />
       </div>
 

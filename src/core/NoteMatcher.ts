@@ -137,6 +137,25 @@ export class NoteMatcher {
   }
 
   /**
+   * Jumps to a step by index — what tapping a spot in the score resolves to.
+   *
+   * Out-of-range values are clamped rather than rejected: the caller is a
+   * finger on a touch screen, and refusing a tap two pixels past the last note
+   * would be worse than starting at the nearest thing there is. Landing on a
+   * rest moves on to the next playable step, so the position never comes to a
+   * stop somewhere that needs no input.
+   */
+  seekToStep(index: number): void {
+    const clamped = Math.min(
+      Math.max(Math.round(index), 0),
+      this.score.steps.length,
+    );
+    this.position = this.skipSilent(clamped);
+    this.satisfied = new Set();
+    this.error = false;
+  }
+
+  /**
    * Rests need no input, so the position never comes to a stop on one.
    * Skipping them here keeps that rule in a single place.
    */

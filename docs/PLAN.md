@@ -310,3 +310,51 @@ ja, Dynamik nein).
 Zielkonflikt: Hauptziel ist Notenlesen, dafuer waere der Platz besser in
 groesseren Noten angelegt. Dynamik gehoert aber zum richtigen Lesen dazu.
 Zu entscheiden, wenn die App auf dem echten Geraet ausprobiert wurde.
+
+## Antippen, um von dort zu spielen (22.09.2026)
+
+Beim Ueben wiederholt man eine schwierige Stelle, nicht den Anfang. Ein Tipp
+auf eine Note setzt die Position jetzt dorthin.
+
+### Warum relative Positionen statt Pixel
+
+Beim Einlesen laeuft der Cursor ohnehin einmal durch die ganze Partitur.
+Dabei notiert `extractScore` zusaetzlich, an welchem **Bruchteil der
+Gesamtbreite** jeder Schritt sitzt — nicht an welchem Pixel.
+
+Pixel waeren beim naechsten Neuzeichnen falsch, und neu gezeichnet wird bei
+jeder Drehung des Geraets und bei jeder Zoomaenderung. Verhaeltnisse
+ueberstehen das, weil OSMD das gesamte Layout gleichmaessig skaliert. Aus
+einem Verhaeltnis wieder eine Pixelposition zu machen ist eine
+Multiplikation mit der aktuellen Breite.
+
+Damit entfaellt auch OSMDs Einheitenrechnung samt `unitInPixels` und
+`GetNearestNote` vollstaendig.
+
+### Kosten im Griff
+
+Die Position wird aus `cursorElement.style.left` gelesen, nicht aus
+`offsetLeft`. Das Attribut setzt OSMD selbst, und eine Zeichenkette zu lesen
+kostet nichts — `offsetLeft` wuerde den Browser bei jedem von mehreren
+hundert Schritten zu einem neuen Layout zwingen. Die Breite des Blattes wird
+einmal vor dem Durchlauf gemessen.
+
+### Wischen ist kein Tippen
+
+Eine Geste zaehlt nur als Tippen, wenn sich der Finger weniger als zehn
+Pixel bewegt hat. Sonst wuerde jedes seitliche Blaettern die Spielposition
+verstellen.
+
+### Neu im Kern
+
+`NoteMatcher.seekToStep(index)` klemmt statt abzulehnen — die Eingabe kommt
+von einem Finger auf Glas, und einen Tipp zwei Pixel hinter der letzten Note
+zurueckzuweisen waere schlechter, als beim naechstgelegenen anzufangen.
+Landet der Tipp auf einer Pause, geht es zum naechsten spielbaren Schritt.
+
+`stepAtFraction()` ist reine Suchlogik ohne OSMD-Bezug und daher getestet,
+inklusive der Faelle, die ein Touchscreen produziert: Tipp zwischen zwei
+Noten, exakt auf der Mitte, vor dem Anfang, hinter dem Ende, und auf einen
+Akkord, dessen Toene alle an derselben Stelle sitzen.
+
+53 Tests, alle gruen.
