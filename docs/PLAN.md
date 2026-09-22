@@ -745,6 +745,12 @@ Viertel und 0,238 s pro Achtel. Das war zu erwarten, weil der Zeitplan aus
 `core/playback.ts` kommt und den hat der Tausch nicht beruehrt - aber erwartet
 ist nicht geprueft.
 
+Dasselbe noch einmal auf der veroeffentlichten Seite, weil dort der Pfad zu
+den Aufnahmen ein anderer ist: fuenfzehn Dateien unter
+`/piano-trainer/piano/`, Abstaende 0,477 und 0,238, Spitze 0,861 ueber sechs
+Takte. Damit ist auch die Zahl im Kommentar berichtigt - vorher stand dort
+eine aus einem kuerzeren Ausschnitt hochgerechnete 0,7.
+
 ### Neu offen
 
 Das erste Vorspielen einer Sitzung braucht Netz. Die Aufnahmen liegen in der

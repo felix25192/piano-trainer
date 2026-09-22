@@ -65,10 +65,11 @@ const SILENT = 0.0001;
  * 0.31 of full scale, around 0.2 for a typical note — played straight they are
  * far too quiet on a tablet speaker.
  *
- * The figure comes from metering the output. At twice the level the opening of
- * the Bach minuet already reached 0.897, which leaves nothing for a piece that
- * puts four notes under each hand; at 1.6 it sits near 0.7 and the dense
- * moments have somewhere to go.
+ * The figure comes from metering the output. At twice the level the first bars
+ * of the Bach minuet already reached 0.897, which leaves nothing for a piece
+ * that puts four notes under each hand. At 1.6, six bars of the same minuet
+ * peak at 0.861 and the Chopin nocturne — the densest of the seven — at 0.888,
+ * so nothing clips and the limiter still has somewhere to work.
  *
  * The limiter catches whatever still gets past that. It sits high on purpose:
  * a threshold low enough to be working constantly would flatten the very
