@@ -41,8 +41,11 @@ src/Home.tsx    The start screen. Reports which mode was tapped; knows
 - `core/musicxml.ts` — serialises them
 - `core/NoteMatcher.ts` — the engine: right note advances, wrong note stops
 - `core/NoteInputSource.ts` — **the port** every input implements
+- `core/playback.ts` — note values and tempo into seconds
+- `core/NoteOutput.ts` — **the port** every sound output implements
 - `adapters/osmdScore.ts` — the only file allowed to know OSMD's object graph
 - `adapters/MidiInput.ts` — Web MIDI (desktop only; Safari has none)
+- `adapters/SynthOutput.ts` — Web Audio, synthesised, no samples
 - `adapters/scoreLibrary.ts` — IndexedDB
 
 Generated exercises go out through MusicXML rather than straight into the
@@ -98,8 +101,16 @@ Seven graded pieces ship with it, chosen for reading rather than playing — wha
 matters is being *unfamiliar*, since a piece you know by ear lets memory do the
 work while the eyes learn nothing.
 
+A passage can be played back from the highlight and stops on a second press,
+at the tempo the score names — or at 75 % or half of it. The highlight runs
+with the sound and stays where it stopped, so listening to a passage leaves
+you ready to play the next one. Verified against the clock: the minuet's
+quarters come out at 0.476 s and its eighths at 0.238 s, which is 126 exactly.
+
 The expected notes are deliberately **not** displayed. Naming them turns the
 exercise into reading text. A wrong note turns the highlight red instead.
+Playing them back is the deliberate exception: it gives the ear something to
+aim at and still leaves the eyes the work of finding it on the page.
 
 ## What is open
 
@@ -112,6 +123,17 @@ exercise into reading text. A wrong note turns the highlight red instead.
   feasible at all. MIDI on the desktop is the reference to measure it against.
   The start screen already lists it as a third card, greyed out and labelled
   as unbuilt.
+- **Tied notes are asked for twice.** A tie is one sound, held, not struck
+  again — but the matcher still requires the continuation note to be played.
+  The data to fix it is already there and playback honours it
+  (`ExpectedNote.heldOver`); the matcher does not, because changing what the
+  app demands of the player is a decision of its own, not a side effect of
+  adding sound.
+- **Playback on iOS**: Web Audio is silenced by the ring switch, and the
+  behaviour from the home screen is untested. Same class of unknown as Spike A.
+- **Dynamics and pedal are ignored** when playing back — everything sounds
+  equally loud and nothing rings on past its written length. Audible in the
+  Chopin and the Moonlight, which are the two pieces that live on it.
 - **Minor fingerings**: absent on purpose. They do not simply follow the
   parallel or relative major, and a wrongly practised fingering is harder to
   unlearn than none.

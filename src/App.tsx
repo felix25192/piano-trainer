@@ -15,6 +15,9 @@ import { scoreFileAccept } from "./core/scoreFile";
 import { buildExercise, keyName, type ExerciseOptions } from "./core/exercises";
 import { exerciseToMusicXml } from "./core/musicxml";
 import { keyOf, type Key, type Letter } from "./core/theory";
+import { buildSchedule, stepAtTime, type Schedule } from "./core/playback";
+import type { NoteOutput } from "./core/NoteOutput";
+import { isAudioSupported, SynthOutput } from "./adapters/SynthOutput";
 import Home, { type ModeId } from "./Home";
 import "./App.css";
 
@@ -178,6 +181,37 @@ const MINOR_KEYS: Array<[Letter, number]> = [
   ["E", -1], ["B", -1], ["F", 0], ["C", 0], ["G", 0], ["D", 0],
 ];
 
+/**
+ * Speeds offered for playing a passage back, as a share of what is written.
+ *
+ * The score's own tempo is the default, because hearing it as meant is the
+ * point. But the marks in these files are performance tempi — the Beethoven
+ * asks for 180 — and a passage you cannot follow teaches nothing, so the
+ * slower steps are there for a first pass.
+ */
+/**
+ * How long to keep the playback alive after the last note is due.
+ *
+ * Stopping the moment the written length runs out would cut the damper off
+ * mid-fall and leave a click where the piece should fade. A few tenths cover
+ * the release the output puts on every note.
+ */
+const PLAYBACK_TAIL_SECONDS = 0.5;
+
+/**
+ * How often the highlight checks where the sound has got to.
+ *
+ * Fine enough that no note is missed even in the fastest passage, coarse
+ * enough not to wake up for nothing between them.
+ */
+const FOLLOW_MS = 40;
+
+const TEMPO_FACTORS: Array<[number, string]> = [
+  [0.5, "50 %"],
+  [0.75, "75 %"],
+  [1, "wie notiert"],
+];
+
 const KIND_LABELS: Array<[ExerciseOptions["kind"], string]> = [
   ["scale", "Tonleiter"],
   ["arpeggio", "Arpeggio"],
@@ -205,6 +239,12 @@ export default function App() {
    * it a card that says "weiter üben" would drop you at bar one.
    */
   const resumeStepRef = useRef<{ key: string; step: number } | null>(null);
+  /** The sound output, built on the first tap of play and kept afterwards. */
+  const outputRef = useRef<NoteOutput | null>(null);
+  /** What is currently being played back, so the cursor can be kept on it. */
+  const scheduleRef = useRef<Schedule | null>(null);
+  /** The timer that keeps the highlight on the note being heard. */
+  const followRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [view, setView] = useState<View>("home");
   const [selected, setSelected] = useState<Selection>(BUNDLED[0]);
@@ -223,6 +263,8 @@ export default function App() {
     octaves: 2,
     motion: "parallel",
   });
+  const [playing, setPlaying] = useState(false);
+  const [tempoFactor, setTempoFactor] = useState(1);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState<string | null>(null);
   const [score, setScore] = useState<Score | null>(null);
@@ -269,6 +311,85 @@ export default function App() {
   }, []);
 
   /**
+   * Walks OSMD's cursor forward to where the engine stands.
+   *
+   * Forward only, and from wherever it already is — unlike `restoreCursor`,
+   * which rewinds first. That matters during playback: rewinding and stepping
+   * through from the start on every note would turn a Mozart movement of two
+   * thousand steps into two million.
+   */
+  const advanceCursor = useCallback(() => {
+    const osmd = osmdRef.current;
+    const target = matcherRef.current?.progress.stepIndex ?? 0;
+    if (!osmd) return;
+
+    let guard = 0;
+    while (cursorIndexRef.current < target && guard++ < 10_000) {
+      osmd.cursor.next();
+      cursorIndexRef.current++;
+    }
+  }, []);
+
+  const stopPlayback = useCallback(() => {
+    if (followRef.current !== null) {
+      clearInterval(followRef.current);
+      followRef.current = null;
+    }
+    outputRef.current?.stop();
+    scheduleRef.current = null;
+    setPlaying(false);
+  }, []);
+
+  /**
+   * Keeps the highlight on the note being heard.
+   *
+   * It asks the output where it stands rather than counting frames or adding
+   * up intervals, because that is the same clock the notes are scheduled
+   * against. Anything else would drift, and a highlight half a bar away from
+   * the sound is worse than none.
+   *
+   * Driven by a timer and not by `requestAnimationFrame`, although this moves
+   * something on screen. Animation frames stop entirely while the window is
+   * not drawing, and the sound does not — so the piece would finish unheard by
+   * the app, leaving the stop button lit and the position frozen mid-piece.
+   * A timer is throttled there rather than halted, which is enough to notice
+   * that the last note has gone. Nothing is animated here anyway: the highlight
+   * moves once per note, not once per frame.
+   */
+  const follow = useCallback(() => {
+    const schedule = scheduleRef.current;
+    const matcher = matcherRef.current;
+    const elapsed = outputRef.current?.elapsed();
+
+    if (!schedule || !matcher || elapsed === null || elapsed === undefined) {
+      stopPlayback();
+      return;
+    }
+
+    const due = stepAtTime(schedule, elapsed);
+    // Only ever forward: seeking skips rests, so the engine can already stand
+    // past the step that is sounding.
+    if (due !== null && due > matcher.progress.stepIndex) {
+      matcher.seekToStep(due);
+      advanceCursor();
+      scrollCursorIntoView(osmdRef.current, scrollRef.current, "auto");
+      setTick((t) => t + 1);
+    }
+
+    if (elapsed >= schedule.duration + PLAYBACK_TAIL_SECONDS) stopPlayback();
+  }, [advanceCursor, stopPlayback]);
+
+  // The audio hardware outlives every piece, so it is only given back when the
+  // app itself goes away.
+  useEffect(() => {
+    return () => {
+      if (followRef.current !== null) clearInterval(followRef.current);
+      outputRef.current?.dispose();
+      outputRef.current = null;
+    };
+  }, []);
+
+  /**
    * Opens a piece and remembers it for next time.
    *
    * The remembering deliberately hangs off the act of choosing rather than off
@@ -284,12 +405,13 @@ export default function App() {
 
   /** Leaves the score, keeping the bar it stood on for the way back. */
   const goHome = useCallback(() => {
+    stopPlayback();
     const step = matcherRef.current?.progress.stepIndex;
     resumeStepRef.current = step === undefined ? null : { key: selected.key, step };
     setSheet(null);
     setResumable(true);
     setView("home");
-  }, [selected.key]);
+  }, [selected.key, stopPlayback]);
 
   /**
    * A card on the home screen opens the score with the matching panel already
@@ -442,6 +564,8 @@ export default function App() {
 
     return () => {
       cancelled = true;
+      // The schedule belongs to the score that is going away.
+      stopPlayback();
       try {
         osmd.clear();
       } catch {
@@ -492,15 +616,11 @@ export default function App() {
     const outcome = matcher.noteOn({ midi, time: performance.now(), confidence: 1 });
 
     if (outcome.kind === "advanced") {
-      let guard = 0;
-      while (cursorIndexRef.current < matcher.progress.stepIndex && guard++ < 10_000) {
-        osmd.cursor.next();
-        cursorIndexRef.current++;
-      }
+      advanceCursor();
       scrollCursorIntoView(osmd, scrollRef.current, "smooth");
     }
     setTick((t) => t + 1);
-  }, []);
+  }, [advanceCursor]);
 
   const playCorrect = useCallback(() => {
     const next = matcherRef.current?.remaining[0];
@@ -516,21 +636,23 @@ export default function App() {
   }, [play]);
 
   const restart = useCallback(() => {
+    stopPlayback();
     matcherRef.current?.reset();
     restoreCursor();
     scrollCursorIntoView(osmdRef.current, scrollRef.current, "auto");
     setTick((t) => t + 1);
-  }, [restoreCursor]);
+  }, [restoreCursor, stopPlayback]);
 
   const jumpToMeasure = useCallback(
     (measure: number) => {
+      stopPlayback();
       matcherRef.current?.seekToMeasure(measure);
       restoreCursor();
       scrollCursorIntoView(osmdRef.current, scrollRef.current, "smooth");
       setSheet(null);
       setTick((t) => t + 1);
     },
-    [restoreCursor],
+    [restoreCursor, stopPlayback],
   );
 
   // A tap in the score starts from there. Practising means repeating one
@@ -554,6 +676,8 @@ export default function App() {
       const svg = scrollRef.current?.querySelector("svg");
       if (!matcher || !svg) return;
 
+      stopPlayback();
+
       const box = svg.getBoundingClientRect();
       if (box.width <= 0) return;
 
@@ -564,7 +688,7 @@ export default function App() {
       scrollCursorIntoView(osmdRef.current, scrollRef.current, "smooth");
       setTick((t) => t + 1);
     },
-    [restoreCursor],
+    [restoreCursor, stopPlayback],
   );
 
   // Registered once; the ref keeps the space bar on the same path as the button.
@@ -585,10 +709,55 @@ export default function App() {
 
   const pieceLabel = selected.label;
   const busy = status !== "bereit";
+  const audioSupported = isAudioSupported();
+  /**
+   * The tempo in force where the highlight stands, so the setting can name
+   * what its percentages are a share of. It is not one number per piece: the
+   * C major prelude broadens from 72 to 30 for its last two bars.
+   */
+  const currentBpm = score
+    ? (score.steps[progress?.stepIndex ?? 0]?.bpm ?? score.steps[0]?.bpm)
+    : undefined;
 
   function setZoomManually(next: number) {
     setAutoFit(false);
     setZoom(round(clamp(next, ZOOM_MIN, ZOOM_MAX)));
+  }
+
+  /**
+   * Plays from where the highlight stands, and stops on a second press.
+   *
+   * The engine's position is both where it starts and where it ends up, so
+   * listening to a passage leaves you ready to play the next one — rather
+   * than somewhere a separate playback marker happened to stop.
+   */
+  function togglePlay() {
+    if (playing) {
+      stopPlayback();
+      return;
+    }
+
+    const matcher = matcherRef.current;
+    if (!score || !matcher) return;
+
+    const schedule = buildSchedule(score, matcher.progress.stepIndex, tempoFactor);
+    if (schedule.notes.length === 0) return;
+
+    // Built on the first press rather than on mount: a browser hands out sound
+    // only from inside a gesture, and iOS is strict about it.
+    outputRef.current ??= new SynthOutput();
+
+    scheduleRef.current = schedule;
+    outputRef.current.start(schedule.notes);
+    setPlaying(true);
+    follow();
+    followRef.current = setInterval(follow, FOLLOW_MS);
+  }
+
+  /** Changing the speed mid-passage would need a new schedule; simpler to stop. */
+  function changeTempo(factor: number) {
+    stopPlayback();
+    setTempoFactor(factor);
   }
 
   /**
@@ -744,17 +913,40 @@ export default function App() {
       </div>
 
       <div className="actions">
-        <button className="secondary" onClick={restart} aria-label="Von vorn" disabled={busy}>
+        <button
+          className="secondary"
+          onClick={restart}
+          aria-label="Von vorn"
+          disabled={busy || playing}
+        >
           ↺
         </button>
-        <button className="primary" onClick={playCorrect} disabled={busy || progress?.finished}>
+        {/*
+          Hearing the passage, rather than being told which notes it holds.
+          Naming them would turn reading notation into reading text; playing
+          them gives the ear something to aim at and still leaves the eyes the
+          work of finding it on the page.
+        */}
+        <button
+          className={"secondary" + (playing ? " on" : "")}
+          onClick={togglePlay}
+          aria-label={playing ? "Wiedergabe anhalten" : "Ab hier vorspielen"}
+          disabled={busy || !audioSupported}
+        >
+          {playing ? "■" : "▶"}
+        </button>
+        <button
+          className="primary"
+          onClick={playCorrect}
+          disabled={busy || playing || progress?.finished}
+        >
           richtigen Ton spielen
         </button>
         <button
           className="secondary"
           onClick={playWrong}
           aria-label="Falschen Ton spielen"
-          disabled={busy || progress?.finished}
+          disabled={busy || playing || progress?.finished}
         >
           ✗
         </button>
@@ -1003,6 +1195,28 @@ export default function App() {
                   </button>
                 </div>
                 <p className="hint">Von Hand einstellen schaltet die automatische Anpassung ab.</p>
+              </div>
+
+              <div className="field">
+                <span>Tempo beim Vorspielen</span>
+                <div className="choices">
+                  {TEMPO_FACTORS.map(([factor, label]) => (
+                    <button
+                      key={label}
+                      className={tempoFactor === factor ? "current" : ""}
+                      onClick={() => changeTempo(factor)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="hint">
+                  {audioSupported
+                    ? currentBpm
+                      ? `Bezogen auf das Tempo der Noten — hier gerade ${Math.round(currentBpm)} Viertel pro Minute.`
+                      : "Bezogen auf das Tempo, das in den Noten steht."
+                    : "Dieser Browser kann keinen Ton ausgeben."}
+                </p>
               </div>
 
               <button className="close" onClick={() => setSheet(null)}>Fertig</button>

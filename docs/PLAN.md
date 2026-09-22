@@ -22,6 +22,8 @@ ein bis vier Oktaven, parallel oder in Gegenbewegung.
 Veroeffentlicht unter <https://felix25192.github.io/piano-trainer/>, bei
 jedem Push auf `main` automatisch aktualisiert. 160 Tests.
 
+Eine Stelle laesst sich ab der Markierung vorspielen, im Tempo der Noten.
+
 **Als Naechstes.** Spike A, sobald iPad und Klavier zusammen verfuegbar sind.
 Danach MicInput, der dickste verbleibende Brocken. Die offenen Punkte im
 Einzelnen stehen in `CLAUDE.md`.
@@ -592,3 +594,96 @@ in diesem Container positioniert und liefe sonst neben den Noten her.
 das Notenbild doch hoeher ist als das Fenster - bei mittiger Ausrichtung waere
 es dann oben und unten zugleich abgeschnitten, und `overflow-y` steht auf
 `hidden`, koennte den Kopf also nicht zurueckholen.
+
+## Vorspielen: Toene hoeren statt Namen lesen (22.09.2026)
+
+Ein Knopf spielt ab der gruenen Markierung, ein zweiter Druck haelt an. Damit
+bekommt man ein Gehoer fuer die Stelle, ohne dass ihr die Notennamen
+danebengeschrieben werden - und genau das ist der Unterschied. Namen zu lesen
+waere Text lesen; das Ohr bekommt ein Ziel und die Augen behalten die Arbeit,
+es auf dem Papier wiederzufinden.
+
+Die Wiedergabe nimmt die Uebungsposition mit. Wer eine Stelle anhoert, steht
+danach genau dort und kann sie selbst spielen.
+
+### Erst messen, dann bauen
+
+Der Score kannte keine Zeit: Tonhoehen, Takte, Positionen, mehr nicht. Bevor
+irgendetwas entstand, lief eine Probeseite ueber alle sieben Stuecke und hat
+ausgelesen, was OSMD ueberhaupt hergibt. Das Ergebnis hat zwei Entscheidungen
+umgedreht, die sonst still falsch gewesen waeren:
+
+**Das Tempo wird pro Takt gelesen, nicht vom Blatt.** Bei der *Danse
+villageoise* ist `DefaultStartTempoInBpm` schlicht `undefined`, waehrend jeder
+einzelne Takt sauber 180 meldet. Der Blattwert haette ausgerechnet dieses eine
+Stueck wortlos auf einen Ersatzwert fallen lassen - und ein falsches Tempo
+merkt man nicht, man haelt es fuer die Vorlage.
+
+**Der Zeitstempel ist der enrolled, nicht der source.** Der eine zaehlt die
+Wiederholung mit, der andere springt bei ihr zurueck. Das Menuett steht mit 32
+Takten auf dem Papier und misst 47,75 ganze Noten - also 64 gespielte Takte.
+Da der Cursorlauf denselben Weg nimmt, erbt die Wiedergabe genau die
+Reihenfolge, die auch das Ueben hat; auseinanderlaufen koennen sie nicht.
+
+Ausserdem aus der Messung: Laengen sind ueberall gesetzt, Triolen sind bereits
+als Zwoelftel eingerechnet, und in keinem der sieben Stuecke gibt es eine Note
+der Laenge null. Das Praeludium hat 134 gebundene Noten - genug, um Bindebogen
+nicht als Randfall zu behandeln.
+
+### Was rein ist und was nicht
+
+`core/playback.ts` rechnet Notenwerte und Tempo in Sekunden um und weiss
+nichts von Web Audio. Heraus kommt ein Plan - diese Tonhoehe, ab dieser
+Sekunde, so lange -, und genau das laesst sich ohne Lautsprecher testen: die
+Zwoelftel aus dem Mondschein, die punktierte Viertel, der gebundene Ton, der
+Sprung von 72 auf 30 im Praeludium.
+
+`core/NoteOutput.ts` ist der Port, spiegelbildlich zu `NoteInputSource`. Die
+eine Seite laesst das Instrument die App treiben, diese die App ein
+Instrument. Der Port ist bewusst eng: der Aufrufer uebergibt einen fertigen
+Plan und fragt die Uhr, er verlangt nie einen Ton *jetzt*. "Jetzt" ist genau
+das, was ein JavaScript-Timer nicht versprechen kann.
+
+`adapters/SynthOutput.ts` erzeugt den Klang selbst, ohne eine einzige
+Sample-Datei. Kein `setTimeout` fuer den Rhythmus: der driftet, zittert unter
+Last und wird im Hintergrundtab gedrosselt, und alle drei waeren als schlechtes
+Timing hoerbar. Der Timer weckt nur alle 25 ms und fuellt die naechsten 200 ms
+auf; wann ein Ton wirklich klingt, entscheidet die Audio-Uhr, die in Samples
+zaehlt.
+
+Der Klang ist synthetisch und gibt sich nicht als Fluegel aus. Angestrebt ist
+ein Ton, der *angeschlagen* klingt statt eingeschaltet - heller Einschwinger,
+der binnen einer Viertelsekunde dunkler wird, tiefe Toene klingen laenger nach
+als hohe. Ob das reicht, entscheidet das Ohr; der Tausch gegen echte Samples
+ist dank des Ports eine Datei daneben und sonst nichts.
+
+### Nachgemessen statt geglaubt
+
+Die Einsaetze wurden nicht angehoert, sondern an der Audio-Uhr mitgeschrieben.
+Menuett bei 126: Viertel 0,476 s, Achtel 0,238 s - exakt 60/126 und die
+Haelfte davon, ueber die ersten zwoelf Einsaetze ohne Abweichung. Auf 50 %
+gestellt verdoppelt sich beides sauber. Die Fuenf-Finger-Uebung erzeugt 18
+Toene fuer neun Noten in zwei Haenden, im Abstand von genau 0,5 s, und haelt
+von allein an.
+
+Dabei kam noch heraus, dass OSMD einem Stueck ohne Tempoangabe von sich aus
+120 gibt. Der eigene Ersatzwert ist damit nur noch ein Schutz gegen eine
+Division durch Null, nicht der Uebungswert - der Kommentar sagt das jetzt auch.
+
+### Gebundene Toene: die Daten sind da, der Matcher aendert sich nicht
+
+Ein Bindebogen ist *ein* Klang. Die Wiedergabe schlaegt die Fortsetzung
+folgerichtig nicht erneut an; `ExpectedNote.heldOver` markiert sie, und
+`Tie.Duration` gibt dem ersten Ton die Laenge der ganzen Kette.
+
+Der NoteMatcher verlangt sie weiterhin ein zweites Mal - was am Klavier falsch
+ist, man haelt die Taste ja. Das bleibt bewusst vorerst so: es aendert, was die
+App vom Spieler fordert, und zwar in jedem Stueck. Eine solche Entscheidung
+gehoert nicht als Nebenwirkung in eine Aenderung, die Ton hinzufuegt. Die
+Daten dafuer liegen jetzt bereit, der Rest ist eine Zeile und ein paar Tests.
+
+### Offen
+
+Der Klingelschalter des iPads schaltet Web Audio stumm - ungetestet, gleiche
+Sorte Unbekannte wie Spike A. Dynamik und Pedal werden ignoriert: alles klingt
+gleich laut, nichts klingt nach. Bei Chopin und Mondschein hoert man genau das.

@@ -240,6 +240,12 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
 
 .secondary { width: var(--touch); flex: none; font-size: 18px !important; }
 
+/* Playback running: the same button now stops it, and says so. */
+.actions .secondary.on {
+  background: var(--accent);
+  color: #fff;
+}
+
 /* ---------- settings ---------- */
 
 .backdrop { position: fixed; inset: 0; background: #000a; border: 0; padding: 0; }

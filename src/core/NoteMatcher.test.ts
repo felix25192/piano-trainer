@@ -3,9 +3,21 @@ import { NoteMatcher } from "./NoteMatcher";
 import type { Score, ScoreStep } from "./score";
 import type { PlayedNote } from "./NoteInputSource";
 
-/** Builds a step from MIDI numbers; an empty list is a rest. */
+/**
+ * Builds a step from MIDI numbers; an empty list is a rest.
+ *
+ * The timing is plain quarter notes at 60. The matcher ignores it entirely —
+ * it only ever asks what has to be played next, never when — but the score
+ * model carries it for playback, so the steps have to be complete.
+ */
 function step(index: number, measure: number, ...midi: number[]): ScoreStep {
-  return { index, measure, notes: midi.map((m) => ({ midi: m, staff: 1 })) };
+  return {
+    index,
+    measure,
+    notes: midi.map((m) => ({ midi: m, staff: 1, duration: 0.25, heldOver: false })),
+    onset: index * 0.25,
+    bpm: 60,
+  };
 }
 
 function scoreOf(...steps: ScoreStep[]): Score {
@@ -245,14 +257,30 @@ describe("the opening of the Moonlight Sonata", () => {
     {
       index: 0,
       measure: 1,
+      onset: 0,
+      bpm: 44,
       notes: [
-        { midi: 37, staff: 2 },
-        { midi: 49, staff: 2 },
-        { midi: 56, staff: 1 },
+        // The octave is a whole note; the triplet eighths above it are a
+        // twelfth of one each.
+        { midi: 37, staff: 2, duration: 1, heldOver: false },
+        { midi: 49, staff: 2, duration: 1, heldOver: false },
+        { midi: 56, staff: 1, duration: 1 / 12, heldOver: false },
       ],
     },
-    { index: 1, measure: 1, notes: [{ midi: 61, staff: 1 }] },
-    { index: 2, measure: 1, notes: [{ midi: 64, staff: 1 }] },
+    {
+      index: 1,
+      measure: 1,
+      onset: 1 / 12,
+      bpm: 44,
+      notes: [{ midi: 61, staff: 1, duration: 1 / 12, heldOver: false }],
+    },
+    {
+      index: 2,
+      measure: 1,
+      onset: 2 / 12,
+      bpm: 44,
+      notes: [{ midi: 64, staff: 1, duration: 1 / 12, heldOver: false }],
+    },
   );
 
   it("requires both hands before it moves on", () => {

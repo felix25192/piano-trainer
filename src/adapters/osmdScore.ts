@@ -1,4 +1,5 @@
 import type { OpenSheetMusicDisplay } from "opensheetmusicdisplay";
+import { FALLBACK_BPM } from "../core/playback";
 import type { ExpectedNote, Score, ScoreStep } from "../core/score";
 
 /**
@@ -40,6 +41,11 @@ export function extractScore(
   const steps: ScoreStep[] = [];
   const anchors: number[] = [];
   const cursor = osmd.cursor;
+  // Tempo is read per measure, not once for the sheet. Two reasons: a piece
+  // can change tempo — the C major prelude drops from 72 to 30 for its last
+  // two bars — and the sheet-wide default is not always filled in. The
+  // Beethoven leaves it undefined while every one of its measures says 180.
+  const measures = osmd.Sheet?.SourceMeasures ?? [];
 
   // Two layout reads for the whole walk; everything after this is arithmetic.
   const sheetWidth = host?.querySelector("svg")?.getBoundingClientRect().width ?? 0;
@@ -48,10 +54,13 @@ export function extractScore(
   cursor.reset();
 
   while (!isAtEnd(cursor) && steps.length < MAX_STEPS) {
+    const measure = currentMeasure(cursor);
     steps.push({
       index: steps.length,
-      measure: currentMeasure(cursor),
+      measure,
       notes: notesUnderCursor(cursor),
+      onset: currentOnset(cursor),
+      bpm: tempoOf(measures[measure - 1]),
     });
     anchors.push(sheetWidth > 0 ? cursorFraction(cursor, sheetWidth, cursorWidth) : 0);
     cursor.next();
@@ -108,6 +117,29 @@ function currentMeasure(cursor: Cursor): number {
   return (iterator?.CurrentMeasureIndex ?? 0) + 1;
 }
 
+/**
+ * How far into the piece the cursor stands, in whole notes.
+ *
+ * The *enrolled* timestamp, not the source one: it counts the route actually
+ * taken, so a repeat carries it onward instead of sending it back to where the
+ * repeated bars were first printed. That matters here because the walk itself
+ * follows the same route — the Bach minuet is 32 bars on paper and 64 under
+ * the hands — and a playback built on source timestamps would jump backwards
+ * in the middle of a piece the player is moving forwards through.
+ */
+function currentOnset(cursor: Cursor): number {
+  const iterator = (cursor as unknown as {
+    iterator?: { CurrentEnrolledTimestamp?: { RealValue?: number } };
+  }).iterator;
+  return iterator?.CurrentEnrolledTimestamp?.RealValue ?? 0;
+}
+
+/** Quarter notes per minute in a measure, or a practice tempo if it names none. */
+function tempoOf(measure: { TempoInBPM?: number } | undefined): number {
+  const bpm = measure?.TempoInBPM;
+  return typeof bpm === "number" && Number.isFinite(bpm) && bpm > 0 ? bpm : FALLBACK_BPM;
+}
+
 function cursorElement(cursor: Cursor): HTMLElement | undefined {
   return (cursor as unknown as { cursorElement?: HTMLElement }).cursorElement;
 }
@@ -146,10 +178,24 @@ function notesUnderCursor(cursor: Cursor): ExpectedNote[] {
     const pitch = note.Pitch;
     if (!pitch) continue;
 
+    /*
+     * A tie is one sound written as several notes. The first of them carries
+     * the length of the whole chain, the rest are already ringing and are
+     * flagged so that playback does not strike them again.
+     */
+    const tie = note.NoteTie;
+    const heldOver = tie ? tie.StartNote !== note : false;
+    const tieLength = tie?.Duration?.RealValue;
+    const ownLength = note.Length?.RealValue ?? 0;
+
     collected.push({
       // OSMD counts half tones from C0 while MIDI counts from C-1.
       midi: pitch.getHalfTone() + 12,
       staff: staffOf(note),
+      // Tuplets need no arithmetic here: OSMD has already divided them, so a
+      // triplet eighth arrives as 1/12 of a whole note.
+      duration: !heldOver && typeof tieLength === "number" ? tieLength : ownLength,
+      heldOver,
     });
   }
 
