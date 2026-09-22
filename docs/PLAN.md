@@ -977,3 +977,34 @@ einstimmig.
 Es ist trotzdem eine nuetzliche Erinnerung daran, wo die eigentliche Arbeit
 liegt: nicht in der Technik des Zuhoerens, sondern in der Mehrstimmigkeit. Ein
 einzelner Ton im Raum ist der Fall, auf den es ankommt - und der geht.
+
+## Warum es im Stummmodus erst ging und dann nicht mehr (22.09.2026)
+
+Felix ist aufgefallen, dass die App morgens auch bei gestelltem Stummschalter
+klang und nach den Reparaturen nicht mehr. Das war kein Zufall, sondern eine
+Folge davon, dass das Mikrofon jetzt korrekt losgelassen wird.
+
+Safari legt einen blanken AudioContext in die Kategorie **ambient**, und die
+schaltet der Klingelschalter hart stumm. Eine Seite mit offenem Mikrofon
+bekommt dagegen eine Aufnahmesitzung, und die ignoriert den Schalter - deshalb
+klingen Videotelefonate im Stummmodus. Solange die Testseite das Mikrofon
+hielt, lebte die App von deren Kategorie. Mit dem Loslassen kam die
+Voreinstellung zurueck.
+
+Der richtige Weg dafuer ist `navigator.audioSession.type = "playback"`, ab
+Safari 16.4. Das ist die Kategorie, in die ein Musikabspieler gehoert, und sie
+wird nicht stummgeschaltet. Sie muss gesetzt sein, **bevor** der Kontext
+entsteht, und wird zur Sicherheit bei jedem Start noch einmal angemeldet -
+beim ersten Mal hat Safari womoeglich noch keine Sitzung zum Einstellen.
+
+Zwei Dinge dazu fuers Protokoll. Erstens ist `playback` exklusiv: es haelt
+andere Wiedergabe auf dem Geraet an. Fuer eine Uebe-App ist das richtig, man
+will nicht gegen Musik aus einer anderen App anspielen. Zweitens wird daraus
+`play-and-record`, sobald das Mikrofon dazukommt - eine Seite kann nur eine
+Kategorie halten, und das ist genau die Stelle, an der sich Zuhoeren und
+Vorspielen wieder in die Quere kommen werden.
+
+Und eine allgemeine Lehre: dass etwas funktioniert, heisst nicht, dass es aus
+dem richtigen Grund funktioniert. Der Stummmodus ging morgens nur, weil eine
+vergessene Testseite nebenher eine Aufnahmesitzung offen hielt. Wer das als
+"geht ja" abgehakt haette, haette es spaeter und unerklaerlicher verloren.

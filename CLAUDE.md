@@ -211,8 +211,12 @@ aim at and still leaves the eyes the work of finding it on the page.
   while the app believes it is playing — failure that looks like working. The
   shell watches for that too and says so after two seconds instead of leaving
   the stop button lit forever.
-- **Playback on iOS**: Web Audio is silenced by the ring switch, and the
-  behaviour from the home screen is untested. Same class of unknown as Spike A.
+- **Playback on iOS**: the app now claims the `playback` audio session, so the
+  ring switch no longer silences it — Safari files a bare AudioContext under
+  `ambient`, which that switch mutes outright. Safari 16.4 and later only;
+  below that the switch keeps the last word. Untested on the device so far.
+  The behaviour from the home screen is untested too, same class of unknown as
+  Spike A.
 - **The first playback of a session needs the network.** The recordings are
   fetched on the first press and kept, but only the ones the passage calls
   for, and there is no service worker to hold them offline. Practising away

@@ -107,6 +107,9 @@ export class SampledPiano implements NoteOutput {
 
   async start(notes: readonly ScheduledNote[]): Promise<void> {
     this.stop();
+    // Again on every start, not only at construction: Safari may not have had
+    // a session to configure the first time.
+    claimPlaybackSession();
 
     // Waking has to be asked for inside the gesture that called us, before the
     // first await — which is why starting playback is a tap and never an
@@ -312,6 +315,9 @@ export class SampledPiano implements NoteOutput {
   private context(): AudioContext {
     if (this.ctx) return this.ctx;
 
+    // Has to be claimed before the context exists, or the context is built
+    // against the session Safari had already chosen.
+    claimPlaybackSession();
     const ctx = new AudioContext();
 
     const master = ctx.createGain();
@@ -329,6 +335,31 @@ export class SampledPiano implements NoteOutput {
     this.master = master;
     return ctx;
   }
+}
+
+/**
+ * Tells the device that this page plays music, not incidental sound.
+ *
+ * Safari files a bare AudioContext under "ambient", and the ring switch
+ * silences that category outright — which is right for a page that beeps and
+ * wrong for one someone practises to. "playback" is the category a music
+ * player belongs in, and it is not silenced.
+ *
+ * This was found the hard way. For a while the app played with the switch on,
+ * and it looked like it simply worked; in fact a microphone test page was
+ * holding a recording session, whose category also ignores the switch, and the
+ * app was living off it. Releasing the microphone properly took that away and
+ * the real default came back.
+ *
+ * Only Safari 16.4 and later, and not in the type definitions yet, hence the
+ * narrow cast. Where it is missing the ring switch keeps the last word, which
+ * is the behaviour we already had. When the microphone arrives this becomes
+ * "play-and-record", because a page can only hold one category at a time.
+ */
+function claimPlaybackSession(): void {
+  const session = (navigator as Navigator & { audioSession?: { type: string } })
+    .audioSession;
+  if (session) session.type = "playback";
 }
 
 /** True when this browser can make a sound at all. */
