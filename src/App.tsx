@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { OpenSheetMusicDisplay } from "opensheetmusicdisplay";
-import { NoteMatcher, type MatchOutcome } from "./core/NoteMatcher";
-import { midiToName } from "./core/pitch";
+import { NoteMatcher } from "./core/NoteMatcher";
 import type { Score } from "./core/score";
 import { extractScore, stepAtFraction } from "./adapters/osmdScore";
 import "./App.css";
@@ -56,7 +55,6 @@ export default function App() {
   const [score, setScore] = useState<Score | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tick, setTick] = useState(0);
-  const [lastOutcome, setLastOutcome] = useState<MatchOutcome | null>(null);
 
   /** Puts OSMD's cursor back where the engine stands after a re-render. */
   const restoreCursor = useCallback(() => {
@@ -218,7 +216,6 @@ export default function App() {
     if (!matcher || !osmd) return;
 
     const outcome = matcher.noteOn({ midi, time: performance.now(), confidence: 1 });
-    setLastOutcome(outcome);
 
     if (outcome.kind === "advanced") {
       let guard = 0;
@@ -248,7 +245,6 @@ export default function App() {
     matcherRef.current?.reset();
     restoreCursor();
     scrollCursorIntoView(osmdRef.current, scrollRef.current, "auto");
-    setLastOutcome(null);
     setTick((t) => t + 1);
   }, [restoreCursor]);
 
@@ -281,7 +277,6 @@ export default function App() {
 
       restoreCursor();
       scrollCursorIntoView(osmdRef.current, scrollRef.current, "smooth");
-      setLastOutcome(null);
       setTick((t) => t + 1);
     },
     [restoreCursor],
@@ -318,15 +313,13 @@ export default function App() {
         {progress && !progress.finished && (
           <span className="measure">Takt {progress.measure}</span>
         )}
-        <span
-          className={
-            "expect" +
-            (progress?.hasError ? " error" : "") +
-            (progress?.finished ? " done" : "")
-          }
-        >
-          {busy ? status : expectation(progress, lastOutcome)}
-        </span>
+        {/*
+          The expected notes are deliberately NOT shown. Naming them turns the
+          exercise into reading text instead of reading notation, which is the
+          whole point of the app. The highlight turning red says "that was
+          wrong" without giving the answer away.
+        */}
+        <span className="expect">{busy ? status : progress?.finished ? "zu Ende" : ""}</span>
         <button
           className="icon-button"
           onClick={() => setSettingsOpen(true)}
@@ -339,7 +332,7 @@ export default function App() {
       {error && <pre className="error-box">{error}</pre>}
 
       <div
-        className="scroller"
+        className={"scroller" + (progress?.hasError ? " wrong" : "")}
         ref={scrollRef}
         onPointerDown={onScorePointerDown}
         onPointerUp={onScorePointerUp}
@@ -497,29 +490,6 @@ function clamp(v: number, lo: number, hi: number): number {
 /** Avoids 1.7999999999999998 from repeated floating point addition. */
 function round(z: number): number {
   return Math.round(z * 10) / 10;
-}
-
-function expectation(
-  progress: { remaining: number[]; finished: boolean } | undefined,
-  outcome: MatchOutcome | null,
-): React.ReactNode {
-  if (!progress) return "—";
-  if (progress.finished) return <b>zu Ende</b>;
-
-  if (outcome?.kind === "wrong") {
-    return (
-      <>
-        {midiToName(outcome.played)} ✗ — erwartet{" "}
-        <b>{outcome.expected.map((m) => midiToName(m)).join(" ")}</b>
-      </>
-    );
-  }
-
-  return (
-    <>
-      erwartet <b>{progress.remaining.map((m) => midiToName(m)).join(" ") || "—"}</b>
-    </>
-  );
 }
 
 function scrollCursorIntoView(

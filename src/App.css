@@ -126,7 +126,19 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
  */
 .scroller img[id^="cursorImg"] {
   transform-origin: center center;
-  transition: left 120ms ease-out;
+  transition: left 120ms ease-out, filter 120ms linear;
+}
+
+/**
+ * A wrong note turns the highlight red.
+ *
+ * The point is to say "that was you, not a hang" without saying which note was
+ * expected — naming it would turn sight-reading practice into reading text.
+ * OSMD draws the cursor as a generated green image, so the colour is rotated
+ * rather than replaced.
+ */
+.scroller.wrong img[id^="cursorImg"] {
+  filter: hue-rotate(245deg) saturate(1.6);
 }
 
 /* ---------- placeholder controls, until the piano drives this ---------- */
