@@ -491,3 +491,30 @@ woanders hin setzen, weil `seekToMeasure` Pausen ueberspringt.
 
 Ein Hinweis im Panel verweist aufs direkte Antippen im Notenbild - das ist
 schneller und landet auf der Note statt am Taktanfang.
+
+## Der Uebungsgenerator haengt in der App (22.09.2026)
+
+Eine Uebung ist jetzt eine dritte Art von Stueck, neben mitgeliefert und
+selbst geladen. Erreichbar ueber die Stueckliste.
+
+Waehlbar sind Art (Tonleiter, Arpeggio, Fuenf-Finger), Tonart (zwoelf Dur
+und zwoelf harmonische Moll im Quintenzirkel), Oktaven und Bewegung
+(parallel oder Gegenbewegung). Der Knopf zeigt jederzeit an, was entsteht.
+
+### Erzeugte Uebungen ueberleben den Neustart ohne Speicher
+
+Eine Uebung ist vollstaendig durch ihre Einstellungen beschrieben, also
+traegt ihr Schluessel sie: `ex:scale:G:1:harmonicMinor:2:contrary:true`.
+Beim Wiederherstellen wird der Schluessel gelesen und die Uebung neu
+erzeugt - es gibt nichts abzulegen.
+
+Die Fingersatz-Einstellung steht mit im Schluessel, weil die Zahlen in die
+Notation eingebacken sind und nicht darueber liegen. Umschalten muss die
+Uebung also neu erzeugen, und ein anderer Schluessel loest genau das aus.
+
+### Geprueft am haertesten Fall
+
+gis-Moll, zwei Oktaven, Gegenbewegung: fuenf Kreuze in beiden Systemen,
+beide Haende auf demselben Startton, und an der erhoehten Septime je ein
+**Doppelkreuz** pro Hand. Ein Generator, der in MIDI-Nummern rechnet,
+schriebe dort ein schlichtes G hin.

@@ -12,6 +12,9 @@ import {
   type LibraryEntry,
 } from "./adapters/scoreLibrary";
 import { scoreFileAccept } from "./core/scoreFile";
+import { buildExercise, keyName, type ExerciseOptions } from "./core/exercises";
+import { exerciseToMusicXml } from "./core/musicxml";
+import { keyOf, type Key, type Letter } from "./core/theory";
 import "./App.css";
 
 /**
@@ -32,7 +35,43 @@ import "./App.css";
  */
 type Selection =
   | { kind: "bundled"; key: string; label: string; url: string; hint?: string }
-  | { kind: "library"; key: string; label: string; id: string; hint?: string };
+  | { kind: "library"; key: string; label: string; id: string; hint?: string }
+  | { kind: "exercise"; key: string; label: string; options: ExerciseOptions; hint?: string };
+
+/**
+ * An exercise is described entirely by its options, so its key can carry them.
+ *
+ * That is what lets the last one be reopened after a reload: there is nothing
+ * stored anywhere, the exercise is simply generated again from its name.
+ */
+function exerciseSelection(options: ExerciseOptions): Selection {
+  const { kind, key, octaves, motion, fingerings } = options;
+  return {
+    kind: "exercise",
+    // The fingering setting belongs in the key too: flipping it has to produce
+    // a different selection, or the score would not be regenerated.
+    key: `ex:${kind}:${key.tonic}:${key.tonicAlter}:${key.mode}:${octaves}:${motion}:${fingerings}`,
+    label: buildExercise(options).title,
+    options,
+  };
+}
+
+function parseExerciseKey(encoded: string): Selection | null {
+  const [prefix, kind, tonic, alter, mode, octaves, motion, fingerings] = encoded.split(":");
+  if (prefix !== "ex") return null;
+
+  try {
+    return exerciseSelection({
+      kind: kind as ExerciseOptions["kind"],
+      key: keyOf(tonic as Letter, Number(alter), mode as "major" | "harmonicMinor"),
+      octaves: Number(octaves),
+      motion: motion as ExerciseOptions["motion"],
+      fingerings: fingerings !== "false",
+    });
+  } catch {
+    return null;
+  }
+}
 
 function bundled(key: string, label: string, file: string, hint: string): Selection {
   // BASE_URL is "/" during development and "/piano-trainer/" in the build, so
@@ -97,6 +136,30 @@ const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 4;
 const ZOOM_STEP = 0.1;
 
+/**
+ * The keys offered, in circle-of-fifths order — C, then one sharp more each
+ * step, wrapping round through the flats back to F.
+ *
+ * Twelve of each, and the minor list holds the relative minor of the major
+ * beside it. Spelled the way they are normally written: E flat minor rather
+ * than D sharp minor, since six flats beat six sharps plus a double.
+ */
+const MAJOR_KEYS: Array<[Letter, number]> = [
+  ["C", 0], ["G", 0], ["D", 0], ["A", 0], ["E", 0], ["B", 0],
+  ["F", 1], ["D", -1], ["A", -1], ["E", -1], ["B", -1], ["F", 0],
+];
+
+const MINOR_KEYS: Array<[Letter, number]> = [
+  ["A", 0], ["E", 0], ["B", 0], ["F", 1], ["C", 1], ["G", 1],
+  ["E", -1], ["B", -1], ["F", 0], ["C", 0], ["G", 0], ["D", 0],
+];
+
+const KIND_LABELS: Array<[ExerciseOptions["kind"], string]> = [
+  ["scale", "Tonleiter"],
+  ["arpeggio", "Arpeggio"],
+  ["fiveFinger", "Fünf Finger"],
+];
+
 export default function App() {
   const hostRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -116,6 +179,15 @@ export default function App() {
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1.2);
   const [autoFit, setAutoFit] = useState(true);
+  const [fingerings, setFingerings] = useState(true);
+
+  // What the exercise builder currently has set.
+  const [draft, setDraft] = useState<Omit<ExerciseOptions, "fingerings">>({
+    kind: "scale",
+    key: keyOf("C", 0, "major"),
+    octaves: 2,
+    motion: "parallel",
+  });
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState<string | null>(null);
   const [score, setScore] = useState<Score | null>(null);
@@ -126,7 +198,9 @@ export default function App() {
    * the bar. Both are things you change *while* practising, so routing them
    * through a settings menu would be a detour taken dozens of times an hour.
    */
-  const [sheet, setSheet] = useState<"pieces" | "measures" | "settings" | null>(null);
+  const [sheet, setSheet] = useState<
+    "pieces" | "measures" | "settings" | "exercise" | null
+  >(null);
   const [tick, setTick] = useState(0);
 
   // Pieces the user brought along, read once on start. The piece that was open
@@ -255,15 +329,24 @@ export default function App() {
     osmdRef.current = osmd;
     tightenForScreen(osmd);
 
-    // A bundled piece is a URL OSMD fetches itself; one of the user's own is a
-    // Blob out of storage. `load` takes either.
+    /*
+     * Three kinds of source, one loader.
+     *
+     * A bundled piece is a URL OSMD fetches itself, one of the user's own is a
+     * Blob out of storage, and an exercise is MusicXML generated on the spot.
+     * `load` takes all three, which is exactly why the generator writes XML
+     * rather than feeding the engine directly — from here on nothing can tell
+     * a generated scale from a file off disk.
+     */
     const source: Promise<string | Blob> =
       selected.kind === "bundled"
         ? Promise.resolve(selected.url)
-        : getScoreBlob(selected.id).then((blob) => {
-            if (!blob) throw new Error("Diese Datei liegt nicht mehr im Speicher.");
-            return blob;
-          });
+        : selected.kind === "exercise"
+          ? Promise.resolve(exerciseToMusicXml(buildExercise(selected.options)))
+          : getScoreBlob(selected.id).then((blob) => {
+              if (!blob) throw new Error("Diese Datei liegt nicht mehr im Speicher.");
+              return blob;
+            });
 
     source
       .then((content) => osmd.load(content, selected.label))
@@ -457,6 +540,23 @@ export default function App() {
       ].sort((a, b) => a - b)
     : [];
 
+  /** Builds the drafted exercise and opens it. */
+  function startExercise() {
+    choosePiece(exerciseSelection({ ...draft, fingerings }));
+    setSheet(null);
+  }
+
+  /**
+   * Turning fingerings on or off has to regenerate an open exercise, because
+   * the numbers are baked into its notation rather than layered over it.
+   */
+  function changeFingerings(next: boolean) {
+    setFingerings(next);
+    if (selected.kind === "exercise") {
+      choosePiece(exerciseSelection({ ...selected.options, fingerings: next }));
+    }
+  }
+
   const pieces: Selection[] = [
     ...BUNDLED,
     ...library.map(
@@ -637,6 +737,10 @@ export default function App() {
                 Gerät und werden nirgendwohin geschickt.
               </p>
 
+              <button className="add-file" onClick={() => setSheet("exercise")}>
+                <span>Tonleiter oder Übung erzeugen</span>
+              </button>
+
               <button className="close" onClick={() => setSheet(null)}>Fertig</button>
             </div>
           )}
@@ -666,6 +770,115 @@ export default function App() {
             </div>
           )}
 
+          {sheet === "exercise" && (
+            <div className="sheet" role="dialog" aria-label="Übung erzeugen">
+              <h2>Übung</h2>
+
+              <div className="field">
+                <span>Art</span>
+                <div className="choices">
+                  {KIND_LABELS.map(([kind, label]) => (
+                    <button
+                      key={kind}
+                      className={draft.kind === kind ? "current" : ""}
+                      onClick={() => setDraft((d) => ({ ...d, kind }))}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="field">
+                <span>Dur</span>
+                <div className="keys">
+                  {MAJOR_KEYS.map(([tonic, alter]) => {
+                    const key = keyOf(tonic, alter, "major");
+                    return (
+                      <button
+                        key={key.tonic + key.tonicAlter}
+                        className={sameKey(draft.key, key) ? "current" : ""}
+                        onClick={() => setDraft((d) => ({ ...d, key }))}
+                      >
+                        {keyName(key)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="field">
+                <span>Moll, harmonisch</span>
+                <div className="keys">
+                  {MINOR_KEYS.map(([tonic, alter]) => {
+                    const key = keyOf(tonic, alter, "harmonicMinor");
+                    return (
+                      <button
+                        key={`m${key.tonic}${key.tonicAlter}`}
+                        className={sameKey(draft.key, key) ? "current" : ""}
+                        onClick={() => setDraft((d) => ({ ...d, key }))}
+                      >
+                        {keyName(key)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {draft.kind !== "fiveFinger" && (
+                <div className="field">
+                  <span>Oktaven</span>
+                  <div className="stepper">
+                    <button
+                      onClick={() => setDraft((d) => ({ ...d, octaves: d.octaves - 1 }))}
+                      disabled={draft.octaves <= 1}
+                      aria-label="Weniger"
+                    >
+                      −
+                    </button>
+                    <output>{draft.octaves}</output>
+                    <button
+                      onClick={() => setDraft((d) => ({ ...d, octaves: d.octaves + 1 }))}
+                      disabled={draft.octaves >= 4}
+                      aria-label="Mehr"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="field">
+                <span>Bewegung</span>
+                <div className="choices">
+                  <button
+                    className={draft.motion === "parallel" ? "current" : ""}
+                    onClick={() => setDraft((d) => ({ ...d, motion: "parallel" }))}
+                  >
+                    Parallel
+                  </button>
+                  <button
+                    className={draft.motion === "contrary" ? "current" : ""}
+                    onClick={() => setDraft((d) => ({ ...d, motion: "contrary" }))}
+                  >
+                    Gegenbewegung
+                  </button>
+                </div>
+              </div>
+
+              {fingerings && draft.key.mode !== "major" && (
+                <p className="hint">
+                  Für Moll gibt es noch keine Fingersätze — die Noten stimmen, die
+                  Zahlen fehlen. Lieber keine als falsche.
+                </p>
+              )}
+
+              <button className="close" onClick={startExercise}>
+                {buildExercise({ ...draft, fingerings }).title} öffnen
+              </button>
+            </div>
+          )}
+
           {sheet === "settings" && (
             <div className="sheet" role="dialog" aria-label="Einstellungen">
               <h2>Einstellungen</h2>
@@ -676,6 +889,15 @@ export default function App() {
                   type="checkbox"
                   checked={autoFit}
                   onChange={(e) => setAutoFit(e.target.checked)}
+                />
+              </label>
+
+              <label className="row-toggle">
+                Fingersätze über den Noten
+                <input
+                  type="checkbox"
+                  checked={fingerings}
+                  onChange={(e) => changeFingerings(e.target.checked)}
                 />
               </label>
 
@@ -773,6 +995,11 @@ function stretchCursor(host: HTMLElement | null): void {
   cursor.style.transform = `scaleY(${scale.toFixed(3)})`;
 }
 
+/** Two keys are the same when tonic, accidental and mode all match. */
+function sameKey(a: Key, b: Key): boolean {
+  return a.tonic === b.tonic && a.tonicAlter === b.tonicAlter && a.mode === b.mode;
+}
+
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
 }
@@ -811,9 +1038,18 @@ function restoreLastPiece(
   }
   if (!key) return;
 
-  // The piece may have been deleted since; then the default stands.
   const found = available.find((p) => p.key === key);
-  if (found) select(found);
+  if (found) {
+    select(found);
+    return;
+  }
+
+  // An exercise is not in the list — it is described entirely by its key and
+  // simply generated again.
+  const exercise = parseExerciseKey(key);
+  if (exercise) select(exercise);
+
+  // Otherwise the piece was deleted since, and the default stands.
 }
 
 function formatSize(bytes: number): string {

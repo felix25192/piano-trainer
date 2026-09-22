@@ -344,16 +344,73 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
 
 .pieces .remove:active { background: #3a2226; color: var(--bad); }
 
-/* A styled label standing in for the file input, which cannot be styled. */
+/*
+ * A styled label standing in for the file input, which cannot be styled.
+ * The same look serves the plain button beside it, so the two secondary
+ * actions in the piece panel read as a pair.
+ */
 .add-file {
   display: grid;
   place-items: center;
+  width: 100%;
   min-height: var(--touch);
+  background: transparent;
   border: 1px dashed var(--line);
   border-radius: 10px;
   color: var(--ink);
   font: 600 15px system-ui;
   cursor: pointer;
+}
+
+/* ---------- exercise builder ---------- */
+
+/* A row of mutually exclusive options, sharing the width evenly. */
+.choices {
+  display: flex;
+  gap: 6px;
+}
+
+.choices button {
+  flex: 1;
+  min-height: var(--touch);
+  padding: 0 8px;
+  background: var(--raised);
+  color: var(--ink);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font: 15px system-ui;
+  cursor: pointer;
+}
+
+.choices button:active { filter: brightness(1.4); }
+
+.choices button.current {
+  border-color: var(--accent);
+  background: #24304d;
+}
+
+/* Twelve keys, in circle-of-fifths order. */
+.keys {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+  gap: 6px;
+}
+
+.keys button {
+  height: 42px;
+  background: var(--raised);
+  color: var(--ink);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font: 600 14px system-ui;
+  cursor: pointer;
+}
+
+.keys button:active { filter: brightness(1.4); }
+
+.keys button.current {
+  border-color: var(--accent);
+  background: #24304d;
 }
 
 .add-file:active { border-color: var(--accent); }
