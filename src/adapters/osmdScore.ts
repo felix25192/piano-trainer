@@ -41,8 +41,9 @@ export function extractScore(
   const anchors: number[] = [];
   const cursor = osmd.cursor;
 
-  // One layout read for the whole walk; everything after this is arithmetic.
+  // Two layout reads for the whole walk; everything after this is arithmetic.
   const sheetWidth = host?.querySelector("svg")?.getBoundingClientRect().width ?? 0;
+  const cursorWidth = cursorElement(cursor)?.offsetWidth ?? 0;
 
   cursor.reset();
 
@@ -52,7 +53,7 @@ export function extractScore(
       measure: currentMeasure(cursor),
       notes: notesUnderCursor(cursor),
     });
-    anchors.push(sheetWidth > 0 ? cursorFraction(cursor, sheetWidth) : 0);
+    anchors.push(sheetWidth > 0 ? cursorFraction(cursor, sheetWidth, cursorWidth) : 0);
     cursor.next();
   }
 
@@ -107,20 +108,30 @@ function currentMeasure(cursor: Cursor): number {
   return (iterator?.CurrentMeasureIndex ?? 0) + 1;
 }
 
+function cursorElement(cursor: Cursor): HTMLElement | undefined {
+  return (cursor as unknown as { cursorElement?: HTMLElement }).cursorElement;
+}
+
 /**
- * Horizontal position of the cursor as a fraction of the sheet width.
+ * Where a step sits along the staff line, as a fraction of the total width.
  *
- * Reads the inline style rather than `offsetLeft`, because OSMD sets that
- * style itself and reading the string costs nothing — `offsetLeft` would force
- * the browser to lay the page out again on every one of several hundred steps.
+ * Measured at the **centre** of the highlight, not its left edge. The
+ * highlight straddles the notehead, so its left edge sits noticeably before
+ * the note it marks — anchoring there biased every tap towards the following
+ * note, which made hitting the intended one unexpectedly fiddly.
+ *
+ * The position comes from the inline style rather than `offsetLeft`, because
+ * OSMD sets that style itself and reading the string costs nothing;
+ * `offsetLeft` would force a fresh layout on every one of several hundred
+ * steps. The width is passed in, measured once for the whole walk.
  */
-function cursorFraction(cursor: Cursor, sheetWidth: number): number {
-  const el = (cursor as unknown as { cursorElement?: HTMLElement }).cursorElement;
+function cursorFraction(cursor: Cursor, sheetWidth: number, cursorWidth: number): number {
+  const el = cursorElement(cursor);
   if (!el) return 0;
 
   const styled = Number.parseFloat(el.style.left);
   const left = Number.isFinite(styled) ? styled : el.offsetLeft;
-  return left / sheetWidth;
+  return (left + cursorWidth / 2) / sheetWidth;
 }
 
 function notesUnderCursor(cursor: Cursor): ExpectedNote[] {

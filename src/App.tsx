@@ -777,13 +777,28 @@ function scrollCursorIntoView(
   const el = osmd.cursor?.cursorElement as HTMLElement | undefined;
   if (!el) return;
 
-  // Measure both in viewport coordinates, then convert to the scroller's own
-  // scroll axis. offsetLeft would silently mix coordinate systems, since the
-  // cursor's offset parent is OSMD's container rather than the scroller.
-  const cursorLeft = el.getBoundingClientRect().left;
-  const scrollerLeft = scroller.getBoundingClientRect().left;
-  const target =
-    scroller.scrollLeft + (cursorLeft - scrollerLeft) - scroller.clientWidth / 3;
+  /*
+   * Read the position OSMD just wrote, not the one on screen.
+   *
+   * The highlight glides to its new place over 120ms, so measuring it now
+   * reports where it is coming FROM. Forwards that barely shows, because the
+   * old position lies left of the new one and the view ends up slightly short.
+   * Backwards it is glaring: the old position lies to the RIGHT, so jumping
+   * back scrolled forward.
+   *
+   * The inline `left` is the target, set synchronously and untouched by the
+   * transition. It is measured from the OSMD container, which is the scroll
+   * content itself, so it compares directly with scrollLeft.
+   */
+  const styled = Number.parseFloat(el.style.left);
+  const left = Number.isFinite(styled)
+    ? styled
+    : el.getBoundingClientRect().left -
+      scroller.getBoundingClientRect().left +
+      scroller.scrollLeft;
+
+  const centre = left + el.offsetWidth / 2;
+  const target = centre - scroller.clientWidth / 3;
 
   scroller.scrollTo({ left: Math.max(0, target), behavior });
 }
