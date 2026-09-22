@@ -1,6 +1,31 @@
 # Projektplan
 
-Stand: 21.09.2026
+Stand: 22.09.2026
+
+> **Wie diese Datei zu lesen ist:** Unten stehen die Abschnitte in der
+> Reihenfolge ihrer Entstehung, jeder datiert. Zum Einsteigen reicht dieser
+> Kopf und `CLAUDE.md`; der Rest ist Begruendung und wird interessant,
+> sobald etwas seltsam aussieht.
+
+## Wo wir stehen
+
+**Fertig und im Einsatz.** Noten laufen als eine horizontale Zeile durch,
+beide Schluessel, richtige Vorzeichen, Groesse passt sich der Bildschirmhoehe
+selbst an. Antippen setzt die Spielposition. Stueck und Takt sind aus der
+Kopfzeile waehlbar. Eigene MusicXML-Dateien lassen sich laden und bleiben
+erhalten. Sieben gestufte Stuecke sind dabei. Der Generator erzeugt
+Tonleitern, Arpeggien und Fuenf-Finger-Uebungen in vierundzwanzig Tonarten,
+ein bis vier Oktaven, parallel oder in Gegenbewegung.
+
+Veroeffentlicht unter <https://felix25192.github.io/piano-trainer/>, bei
+jedem Push auf `main` automatisch aktualisiert. 160 Tests.
+
+**Als Naechstes.** Spike A, sobald iPad und Klavier zusammen verfuegbar sind.
+Danach MicInput, der dickste verbleibende Brocken. Die offenen Punkte im
+Einzelnen stehen in `CLAUDE.md`.
+
+**Noch nie getestet:** die App am echten Instrument. Bis das passiert ist,
+sind alle Aussagen ueber das Spielgefuehl Vermutungen.
 
 ## Ziel
 
