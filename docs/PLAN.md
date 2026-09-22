@@ -932,3 +932,48 @@ das muss sie nicht. Der Pruefstand hat ja schon gezeigt, dass nur der
 Also: eine billige Anschlagserkennung laeuft durch, und der teure Durchgang
 laeuft einmal pro angeschlagenem Ton. Bei acht Toenen pro Sekunde sind das
 acht mal 18 ms, also gut ein Zehntel eines Kerns. Das traegt.
+
+## Spike A ist bestanden, in Safari (22.09.2026)
+
+Auf dem iPad gemessen, nicht angenommen: Berechtigung kommt, der Stream
+laeuft, und `core/pitchDetect.ts` meldet einen gesummten Ton mit einer
+**Klarheit von 0,94 bis 1,00** - also so sicher wie am Schreibtisch gegen die
+Aufnahmen. Der Mikrofonweg ist damit offen. Vom Startbildschirm aus ist er
+weiterhin ungetestet; genau dort saesse der WebKit-Fehler, falls er ueberhaupt
+zuschlaegt.
+
+Der Weg dorthin war allerdings muehsam, und daran war die Testseite schuld,
+nicht das Geraet. Drei Sachen, die alle in dieselbe Richtung zeigen:
+
+**Der Pegelbalken war linear skaliert.** `rms * 600` bedeutet: ein voellig
+brauchbares Signal von 0,01 zeigt ein Prozent Breite. Das sieht aus wie
+"nichts kommt an", obwohl alles da ist. Jetzt logarithmisch von -60 dB bis 0.
+
+**Darunter sass eine harte Schwelle.** Unterhalb von `rms > 0.006` wurde die
+Erkennung nicht einmal aufgerufen. Unterhalb davon hat die Seite also nicht
+schlecht erkannt, sondern nie - und sie hat es nicht gesagt. Die Schwelle ist
+weg; der Detektor bringt seine eigene mit und ist gegen die Lautstaerke
+normiert, eine zweite absolute Huerde davor war schlicht falsch.
+
+**Die Seite mass etwas anderes als das, was ausgeliefert wird.** Sie trug eine
+eigene grobe Autokorrelation mit sich herum, deren Schwelle absolut und damit
+lautstaerkeabhaengig war. Jetzt benutzt sie `core/pitchDetect.ts`. Dafuer ist
+sie aus `public/` in eine zweite Build-Eingabe gewandert, die Adresse bleibt
+gleich.
+
+Allgemeiner Schluss daraus: **eine Anzeige, die nur "nichts" sagen kann, ist
+keine Messung.** Die Seite zeigt jetzt Zahlen - Pegel in dB, lautester Wert
+seit dem Start, Erkennungen von Versuchen, zuletzt erkannte Frequenz mit
+Klarheit. Damit war die Ursache in einem Durchgang zu sehen.
+
+### Was der Lautsprechertest gezeigt hat
+
+Klaviermusik vom Handylautsprecher bewegt den Balken kaum. Das ist nicht der
+Fall, fuer den die App gebaut wird: ein kleiner Lautsprecher gibt unterhalb
+einiger hundert Hertz fast nichts her, und genau dort liegt das meiste
+Klavierspiel. Dazu ist eine Aufnahme mehrstimmig, und der Detektor ist
+einstimmig.
+
+Es ist trotzdem eine nuetzliche Erinnerung daran, wo die eigentliche Arbeit
+liegt: nicht in der Technik des Zuhoerens, sondern in der Mehrstimmigkeit. Ein
+einzelner Ton im Raum ist der Fall, auf den es ankommt - und der geht.

@@ -128,6 +128,19 @@ point of playing a passage rather than naming its notes. Levels were set by
 metering rather than by ear, since no session here can listen: the densest of
 the seven pieces peaks at 0.89 of full scale.
 
+**Spike A passed in Safari on iOS.** Measured on the device, not assumed:
+permission is granted, the stream runs, and `core/pitchDetect.ts` reports a
+hummed note at a clarity of 0.94 to 1.00 — as sure of itself as it is against
+the recordings on a desktop. So the microphone route is open, and the part
+that is left is musical rather than technical.
+
+What the same session also showed: piano music played back from a phone
+speaker moves the meter barely at all. That is not the case the app is for
+— a small speaker reproduces little below a few hundred hertz, which is where
+most piano music lives, and a recording is polyphonic besides. A single note
+played into the room is the case that matters, and a single note is what
+works.
+
 The expected notes are deliberately **not** displayed. Naming them turns the
 exercise into reading text. A wrong note turns the highlight red instead.
 Playing them back is the deliberate exception: it gives the ear something to
@@ -135,10 +148,10 @@ aim at and still leaves the eyes the work of finding it on the page.
 
 ## What is open
 
-- **Spike A**: microphone access on iOS, including from the home screen. The
-  test page is live at `/mic-test.html`; it needs the device and a piano.
-  A [long-standing WebKit bug](https://bugs.webkit.org/show_bug.cgi?id=185448)
-  may bite.
+- **Spike A, from the home screen.** In Safari it passed — see What works.
+  Launched from the home screen it is still untested, which is where the
+  [long-standing WebKit bug](https://bugs.webkit.org/show_bug.cgi?id=185448)
+  would bite if it bites at all.
 - **MicInput**: the large remaining adapter. Verification against expected
   notes, not polyphonic transcription — that distinction is what makes it
   feasible at all. The start screen already lists it as a third card, greyed
