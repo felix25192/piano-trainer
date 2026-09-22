@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prüfstand: Tonhöhenerkennung</title>
+<style>
+  :root { --bg:#12141a; --panel:#1b1f28; --ink:#e8eaf0; --muted:#8b93a7; --ok:#3ecf8e; --bad:#ff6b6b; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--ink);
+         font:14px/1.5 system-ui, sans-serif; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  p.lead { color:var(--muted); margin:0 0 16px; max-width:62ch; }
+  table { border-collapse:collapse; width:100%; max-width:760px; margin-bottom:20px; }
+  th, td { text-align:right; padding:3px 8px; font-variant-numeric:tabular-nums; }
+  th { color:var(--muted); font-weight:500; border-bottom:1px solid #333a49; }
+  td:first-child, th:first-child { text-align:left; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); }
+  pre { background:var(--panel); padding:12px; border-radius:8px; overflow-x:auto;
+        font:12px/1.5 ui-monospace, monospace; max-width:760px; }
+  h2 { font-size:15px; margin:22px 0 8px; }
+</style>
+</head>
+<body>
+
+<h1>Prüfstand: Tonhöhenerkennung</h1>
+<p class="lead">
+  Schickt die dreißig Aufnahmen aus <code>public/piano/</code> durch
+  <code>core/pitchDetect.ts</code> und vergleicht mit dem Ton, der drinstehen
+  müsste. Echter Flügelklang, kein Klavier nötig. Nur für die Entwicklung —
+  diese Seite wird nicht mit veröffentlicht.
+</p>
+
+<div id="out">läuft…</div>
+
+<script type="module">
+import { detectPitch } from "/src/core/pitchDetect.ts";
+import { frequencyToMidi, midiToName } from "/src/core/pitch.ts";
+
+// Dieselben Dateien und dieselbe Zuordnung wie in adapters/SampledPiano.ts:
+// alle drei Halbtöne ab A0.
+const SAMPLES = [
+  "A0","C1","Ds1","Fs1","A1","C2","Ds2","Fs2","A2","C3","Ds3","Fs3",
+  "A3","C4","Ds4","Fs4","A4","C5","Ds5","Fs5","A5","C6","Ds6","Fs6",
+  "A6","C7","Ds7","Fs7","A7","C8",
+];
+const LOWEST_MIDI = 21;
+
+const out = document.getElementById("out");
+const ctx = new OfflineAudioContext(1, 1, 44100);
+
+/** Eine Aufnahme als Mono-Samples. */
+async function load(name) {
+  const raw = await fetch(`/piano/${name}.mp3`).then((r) => r.arrayBuffer());
+  const buf = await ctx.decodeAudioData(raw);
+  const mono = new Float32Array(buf.length);
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const data = buf.getChannelData(c);
+    for (let i = 0; i < buf.length; i++) mono[i] += data[i] / buf.numberOfChannels;
+  }
+  return { mono, rate: buf.sampleRate, seconds: buf.duration };
+}
+
+function window_(mono, rate, atSeconds, length) {
+  const start = Math.floor(atSeconds * rate);
+  if (start + length > mono.length) return null;
+  return mono.subarray(start, start + length);
+}
+
+const decoded = [];
+for (let i = 0; i < SAMPLES.length; i++) {
+  decoded.push({ name: SAMPLES[i], midi: LOWEST_MIDI + i * 3, ...(await load(SAMPLES[i])) });
+}
+
+/** Ein Durchgang über alle Aufnahmen mit einem festen Fenster und Zeitpunkt. */
+function run(length, atSeconds) {
+  const rows = [];
+  let correct = 0;
+  let totalMs = 0;
+
+  for (const s of decoded) {
+    const slice = window_(s.mono, s.rate, atSeconds, length);
+    if (!slice) {
+      rows.push({ name: s.name, erwartet: midiToName(s.midi), gehoert: "zu kurz", ok: false });
+      continue;
+    }
+
+    const t0 = performance.now();
+    const found = detectPitch(slice, s.rate);
+    totalMs += performance.now() - t0;
+
+    if (!found) {
+      rows.push({ name: s.name, erwartet: midiToName(s.midi), gehoert: "nichts", ok: false });
+      continue;
+    }
+
+    const { midi, cents } = frequencyToMidi(found.hz);
+    const ok = midi === s.midi;
+    if (ok) correct++;
+    rows.push({
+      name: s.name,
+      erwartet: midiToName(s.midi),
+      gehoert: midiToName(midi),
+      cents,
+      klarheit: Math.round(found.clarity * 100) / 100,
+      abweichungHalbtoene: midi - s.midi,
+      ok,
+    });
+  }
+
+  return { rows, correct, msProDurchgang: Math.round((totalMs / decoded.length) * 100) / 100 };
+}
+
+function table(rows) {
+  const head = "<tr><th>Datei</th><th>erwartet</th><th>gehört</th><th>Cent</th><th>Klarheit</th></tr>";
+  const body = rows.map((r) =>
+    `<tr class="${r.ok ? "ok" : "bad"}"><td>${r.name}</td><td>${r.erwartet}</td>` +
+    `<td>${r.gehoert}${r.abweichungHalbtoene ? ` (${r.abweichungHalbtoene > 0 ? "+" : ""}${r.abweichungHalbtoene})` : ""}</td>` +
+    `<td>${r.cents ?? ""}</td><td>${r.klarheit ?? ""}</td></tr>`
+  ).join("");
+  return `<table>${head}${body}</table>`;
+}
+
+let html = "";
+const summary = [];
+
+// Fensterlänge bestimmt die Verzögerung: 8192 Samples sind 186 ms Klang, die
+// erst einmal erklungen sein müssen, bevor überhaupt geantwortet werden kann.
+for (const length of [16384, 8192, 4096, 2048]) {
+  const r = run(length, 0.3);
+  summary.push(`Fenster ${String(length).padStart(5)} (${String(Math.round((length / 44100) * 1000)).padStart(3)} ms): ` +
+    `${String(r.correct).padStart(2)}/30 richtig, ${r.msProDurchgang} ms Rechenzeit`);
+  html += `<h2>Fenster ${length} Samples (${Math.round((length / 44100) * 1000)} ms), 0,3 s nach dem Anschlag — ${r.correct}/30</h2>` + table(r.rows);
+}
+
+// Ein Klavierton wird leiser, je länger er klingt. Hält die Erkennung das aus?
+for (const at of [0.05, 1, 3]) {
+  const r = run(8192, at);
+  summary.push(`Fenster  8192, ${String(at).padStart(4)} s nach Anschlag: ${String(r.correct).padStart(2)}/30 richtig`);
+  html += `<h2>Fenster 8192, ${at} s nach dem Anschlag — ${r.correct}/30</h2>` + table(r.rows);
+}
+
+out.innerHTML = `<pre id="summary">${summary.join("\n")}</pre>` + html;
+</script>
+</body>
+</html>

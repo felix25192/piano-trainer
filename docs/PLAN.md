@@ -822,3 +822,65 @@ Eine Faustregel gaebe es (Pedal wechseln, sobald sich der tiefste klingende
 Ton aendert), und beim Mondschein kaeme sie dem nah, was ein Pianist tut. Bei
 Bach waere sie schlicht falsch. Dieselbe Entscheidung wie bei den
 Moll-Fingersaetzen: lieber keins als ein falsches.
+
+## Ein Pruefstand fuer die Tonhoehenerkennung (22.09.2026)
+
+Das Klavier steht woanders, das Kabel soll es auch nicht sein, und der Weg
+soll ueber das Mikrofon gehen. Damit fehlt die Referenz, die MIDI geliefert
+haette - also musste eine andere her, bevor irgendetwas gebaut wird.
+
+Sie lag schon da: die **dreissig Aufnahmen eines echten Yamaha C5** in
+`public/piano/`. Bekannter Ton rein, "erkennst du ihn?" raus. Echter
+Klavierklang, wiederholbar, ohne Instrument und ohne Kabel.
+
+### Warum YIN und nicht ein Spektrum
+
+Ein Spektrum verfuehrt dazu, den lautesten Ausschlag zu nehmen - und bei einer
+Klaviersaite ist der lauteste Ausschlag oft *nicht* der Grundton. Ein tiefes A
+steckt regelmaessig mehr Energie in seinen zweiten Teilton, und wer Spitzen
+pflueckt, meldet dann die Oktave darueber. Schlimmer noch: der Grundton kann
+ganz fehlen und das Ohr hoert die Note trotzdem.
+
+YIN fragt etwas anderes: ab welcher Verschiebung wiederholt sich die Welle am
+ehesten selbst? Ein fehlender Grundton aendert die *Form* einer Periode, nicht
+ihre *Laenge*. Beide Faelle stehen als Tests in `pitchDetect.test.ts`.
+
+### Was der Pruefstand gemessen hat
+
+    Fenster 16384 (372 ms), 0,3 s nach Anschlag: 26/30, 73,8 ms Rechenzeit
+    Fenster  8192 (186 ms), 0,3 s nach Anschlag: 26/30, 31,1 ms
+    Fenster  4096 ( 93 ms), 0,3 s nach Anschlag: 26/30, 14,4 ms
+    Fenster  2048 ( 46 ms), 0,3 s nach Anschlag: 23/30,  4,3 ms
+
+    Fenster 8192, 0,05 s nach Anschlag: 28/30
+    Fenster 8192, 1    s nach Anschlag: 21/30
+    Fenster 8192, 3    s nach Anschlag: 15/30
+
+Drei Befunde, jeder mit einer Folge:
+
+**Am Anschlag erkennen, nicht im Nachklang.** Von 28/30 direkt nach dem
+Anschlag faellt es auf 15/30 nach drei Sekunden, und ein tiefes Fis liest sich
+dann eine Oktave zu hoch. Der Grundton stirbt vor seinen Teiltoenen. Das passt
+zum Glueck genau zur Engine: die fragt, ob ein Ton *angeschlagen* wurde, nie
+was noch klingt.
+
+**Das Fenster bestimmt die Verzoegerung.** 2048 Samples reichen nicht fuer die
+untersten drei Tasten - zwei Perioden eines A0 sind 3200 Samples, das ist
+Arithmetik und kein Zufall, und genau das haelt ein Test fest. 4096 traegt
+alles ausser dem Bass, 8192 traegt auch den. 93 bis 186 ms Klang muessen also
+erst einmal da sein, bevor ueberhaupt geantwortet werden kann.
+
+**Die Rechenzeit ist das eigentliche Problem.** 14 bis 31 ms pro Durchgang,
+auf einem Desktop, ist viel zu viel fuer etwas, das dauernd laufen soll. Der
+Ausweg steht schon fest: die App weiss immer, welchen Ton sie erwartet, also
+muss nicht die ganze Klaviatur durchsucht werden, sondern nur ein schmales
+Band darum.
+
+### Die vier Ausreisser
+
+Es sind D#7, F#7, A7 und C8 - das obere Ende der Klaviatur, und sie liefern
+*nichts* statt etwas Falschem. Bei zwei davon ist die Ursache nachgemessen und
+harmlos: ihr Effektivpegel liegt 0,3 s nach dem Anschlag bei 0,0014 und
+0,0016, unter der Stille-Schwelle von 0,002. Das Fenster ist tatsaechlich fast
+still, das Schweigen also richtig. Keines der sieben Stuecke kommt jemals dort
+hinauf.

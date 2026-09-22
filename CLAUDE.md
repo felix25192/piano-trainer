@@ -43,6 +43,7 @@ src/Home.tsx    The start screen. Reports which mode was tapped; knows
 - `core/NoteInputSource.ts` — **the port** every input implements
 - `core/playback.ts` — note values, tempo and pedal into seconds
 - `core/pedal.ts` — pedal marks into spans; the pedal change is the trap
+- `core/pitchDetect.ts` — YIN: samples in, one frequency out. Monophonic
 - `core/NoteOutput.ts` — **the port** every sound output implements
 - `adapters/osmdScore.ts` — the only file allowed to know OSMD's object graph
 - `adapters/MidiInput.ts` — Web MIDI (desktop only; Safari has none)
@@ -74,6 +75,12 @@ Dev server, started detached because `npm` resolution is unreliable here:
 ```bash
 nohup "/c/Program Files/nodejs/node.exe" node_modules/vite/bin/vite.js --port 5173 &
 ```
+
+`pitch-lab.html` at the repo root is the bench for the pitch detector: it puts
+the thirty piano recordings through `core/pitchDetect.ts` and prints what came
+back, at several window lengths and several points in the decay. Dev only —
+Vite builds `index.html`, so it is never published. Open it at
+<http://localhost:5173/pitch-lab.html>.
 
 **Deployment is automatic**: a push to `main` runs lint, tests, types and build,
 and publishes to <https://felix25192.github.io/piano-trainer/>.
@@ -134,9 +141,23 @@ aim at and still leaves the eyes the work of finding it on the page.
   may bite.
 - **MicInput**: the large remaining adapter. Verification against expected
   notes, not polyphonic transcription — that distinction is what makes it
-  feasible at all. MIDI on the desktop is the reference to measure it against.
-  The start screen already lists it as a third card, greyed out and labelled
-  as unbuilt.
+  feasible at all. The start screen already lists it as a third card, greyed
+  out and labelled as unbuilt.
+
+  The detector exists and is measured. Against the thirty recordings it gets
+  **28 of 30 right in the first 50 ms after the strike**, and falls to 15 of 30
+  three seconds later — a piano's fundamental dies before its partials do, and
+  a low F sharp then reads an octave high. So the microphone path has to catch
+  the *onset* and not the sustain, which is what the engine wants anyway: it
+  asks whether a note was struck, never what is still ringing.
+
+  Two of the four failures are simply below the silence floor — measured at
+  0.0014 and 0.0016 against a threshold of 0.002 — and both are above the top
+  of anything in the repertoire. What still has to be solved is speed: one
+  detection costs 14 ms at a 4096-sample window and 31 ms at 8192, which is far
+  too much to run continuously. The way out is that the app always knows which
+  note it expects, so the search can be narrowed to a few periods around it
+  instead of sweeping the whole keyboard.
 - **Tied notes are asked for twice.** A tie is one sound, held, not struck
   again — but the matcher still requires the continuation note to be played.
   The data to fix it is already there and playback honours it
