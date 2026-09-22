@@ -16,9 +16,17 @@ import "./App.css";
  * NoteInputSource port.
  */
 
+// BASE_URL is "/" during development and "/piano-trainer/" in the build, so
+// every bundled asset has to be addressed through it rather than from the root.
 const SCORES = [
-  { label: "Clementi — Sonatina Op. 36 No. 1", url: "/scores/clementi-sonatina-op36-no1.xml" },
-  { label: "Beethoven — Moonlight Sonata, 1st mvt.", url: "/scores/moonlight-sonata-mvt1.mxl" },
+  {
+    label: "Clementi — Sonatina Op. 36 No. 1",
+    url: `${import.meta.env.BASE_URL}scores/clementi-sonatina-op36-no1.xml`,
+  },
+  {
+    label: "Beethoven — Moonlight Sonata, 1st mvt.",
+    url: `${import.meta.env.BASE_URL}scores/moonlight-sonata-mvt1.mxl`,
+  },
 ] as const;
 
 export default function App() {

@@ -47,4 +47,11 @@ behind these decisions.
 
 ## Licence
 
-Not yet decided.
+None. All rights reserved.
+
+The source is public so it can be read — this is a personal learning project
+and a portfolio piece. That is not permission to reuse it. If you want to use
+any of it, ask.
+
+The two sheet music files under `public/scores/` are not mine and are not
+covered by this; see [`public/scores/SOURCES.md`](public/scores/SOURCES.md).
