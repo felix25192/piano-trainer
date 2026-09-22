@@ -68,6 +68,7 @@
 <script type="module">
 import { detectPitch } from "/src/core/pitchDetect.ts";
 import { frequencyToMidi, midiToName } from "/src/core/pitch.ts";
+import { audioSession } from "/src/adapters/audioSession.ts";
 
 const $ = (id) => document.getElementById(id);
 
@@ -112,36 +113,26 @@ const WINDOW = 4096;
  */
 const DETECT_EVERY_MS = 100;
 
-/**
- * Die laufende Aufnahme, oder null.
+/*
+ * Die Aufnahme gehoert dem Besitzer in adapters/audioSession.ts, nicht dieser
+ * Seite. Hier bleibt nur die Bildschleife, die angehalten werden muss.
  *
- * Muss festgehalten werden, damit sie sich wieder loslassen laesst. Solange
- * eine Seite das Mikrofon haelt, schaltet iOS die Audio-Sitzung des ganzen
- * Geraets in den Aufnahmemodus - und dann ist Wiedergabe ueberall leise oder
- * stumm, auch in anderen Tabs und Apps. Eine Testseite, die das Mikrofon nie
- * wieder hergibt, macht das Geraet unbrauchbar, bis man den Tab schliesst.
+ * Das ist der ganze Sinn des Umbaus: solange jede Seite selbst am Mikrofon
+ * drehte, hat eine vergessene den Ton des ganzen Geraets lahmgelegt, und jede
+ * Reparatur hat die vorige kaputtgemacht.
  */
-let session = null;
+let raf = 0;
 
-function release() {
-  if (!session) return;
-  cancelAnimationFrame(session.raf);
-  for (const track of session.stream.getTracks()) track.stop();
-  void session.ctx.close();
-  session = null;
+async function release() {
+  cancelAnimationFrame(raf);
+  raf = 0;
+  await audioSession.release();
 
   const btn = $("go");
   btn.disabled = false;
   btn.textContent = "Mikrofon starten";
   $("cents").textContent = "angehalten - das Mikrofon ist wieder frei";
 }
-
-// Beim Wegschalten von selbst loslassen: sonst haelt eine vergessene Seite im
-// Hintergrund das Mikrofon und legt den Ton des Geraets lahm.
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") release();
-});
-window.addEventListener("pagehide", release);
 
 /** Effektivpegel in Dezibel, wo 0 dB volle Aussteuerung ist. */
 function toDb(rms) {
@@ -151,8 +142,8 @@ function toDb(rms) {
 // iOS verlangt eine echte Nutzergeste, bevor Audio laufen darf. Deshalb der Knopf.
 $("go").addEventListener("click", async () => {
   const btn = $("go");
-  if (session) {
-    release();
+  if (audioSession.current === "listening") {
+    await release();
     return;
   }
   btn.disabled = true;
@@ -161,28 +152,20 @@ $("go").addEventListener("click", async () => {
 
   try {
     /*
-     * Echounterdrueckung, Rauschunterdrueckung und Pegelautomatik sind
-     * standardmaessig aus: sie sind fuer Sprache gebaut und zerstoeren
-     * Klaviertoene. Die Pegelautomatik laesst sich hier zuschalten, weil genau
-     * sie der Grund sein kann, dass ein Signal sonst sehr leise ankommt - das
-     * ist eine Messung wert, keine Vermutung.
+     * Die Pegelautomatik laesst sich zuschalten. Sie ist aus, wie
+     * Echounterdrueckung und Rauschunterdrueckung auch - alle drei sind fuer
+     * Sprache gebaut und nehmen einen Klavierton auseinander. Ob sie der Grund
+     * fuer ein sehr leises Signal ist, gehoert aber gemessen.
      */
-    const agc = $("agc").checked;
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: agc },
+    const { ctx, stream } = await audioSession.listen({
+      autoGainControl: $("agc").checked,
     });
-
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    const ctx = new Ctx();
-    // Safari startet den Kontext gelegentlich angehalten.
-    if (ctx.state === "suspended") await ctx.resume();
 
     const analyser = ctx.createAnalyser();
     analyser.fftSize = WINDOW;
     ctx.createMediaStreamSource(stream).connect(analyser);
 
     const track = stream.getAudioTracks()[0];
-    session = { stream, ctx, raf: 0 };
 
     btn.disabled = false;
     btn.textContent = `Mikrofon stoppen — ${Math.round(ctx.sampleRate)} Hz`;
@@ -252,7 +235,7 @@ function loop(analyser, sampleRate, track) {
       ["Pegelautomatik", settings.autoGainControl === undefined ? "unbekannt" : String(settings.autoGainControl)],
     ].map(([k, v]) => `<div class="row"><span class="muted">${k}</span><span>${v}</span></div>`).join("");
 
-    if (session) session.raf = requestAnimationFrame(frame);
+    if (audioSession.current === "listening") raf = requestAnimationFrame(frame);
   }
 
   frame();

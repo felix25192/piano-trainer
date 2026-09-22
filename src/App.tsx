@@ -17,7 +17,8 @@ import { exerciseToMusicXml } from "./core/musicxml";
 import { keyOf, type Key, type Letter } from "./core/theory";
 import { buildSchedule, stepAtTime, type Schedule } from "./core/playback";
 import type { NoteOutput } from "./core/NoteOutput";
-import { isAudioSupported, SampledPiano } from "./adapters/SampledPiano";
+import { SampledPiano } from "./adapters/SampledPiano";
+import { isAudioSupported } from "./adapters/audioSession";
 import Home, { type ModeId } from "./Home";
 import "./App.css";
 

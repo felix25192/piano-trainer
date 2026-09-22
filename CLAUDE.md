@@ -44,9 +44,13 @@ src/Home.tsx    The start screen. Reports which mode was tapped; knows
 - `core/playback.ts` — note values, tempo and pedal into seconds
 - `core/pedal.ts` — pedal marks into spans; the pedal change is the trap
 - `core/pitchDetect.ts` — YIN: samples in, one frequency out. Monophonic
+- `core/audioMode.ts` — the rule that playing and listening cannot both hold
+  the device
 - `core/NoteOutput.ts` — **the port** every sound output implements
 - `adapters/osmdScore.ts` — the only file allowed to know OSMD's object graph
 - `adapters/MidiInput.ts` — Web MIDI (desktop only; Safari has none)
+- `adapters/audioSession.ts` — **the only file that touches the device's
+  audio**: the context, the session category, the microphone
 - `adapters/SampledPiano.ts` — Web Audio, recordings of a real piano
 - `adapters/scoreLibrary.ts` — IndexedDB
 
@@ -89,6 +93,37 @@ When testing in the built-in browser pane, note that `scrollTo({behavior:
 "smooth"})` does not animate while the window is in the background. Patch
 `scrollTo` to `behavior: "auto"` in a probe rather than concluding the app is
 broken.
+
+## Before changing anything about audio
+
+The device has **one** audio session. Playing back and listening need different
+categories and cannot both hold it, on iOS and in a native app alike — the
+categories are the operating system's, not the browser's. `core/audioMode.ts`
+is that rule and `adapters/audioSession.ts` is the only thing allowed to act on
+it. Nothing else may create an `AudioContext`, set `navigator.audioSession.type`
+or call `getUserMedia`. One grep keeps that honest:
+
+```bash
+grep -rn "new AudioContext\|getUserMedia\|audioSession.type" src mic-test.html
+```
+
+This was learnt the hard way. Three places each took the device on their own,
+and a day went on fixes that each broke the one before: releasing the
+microphone took playback away in silent mode, claiming `playback` for silent
+mode took the microphone away. Each was verified on its own and none against
+what already worked.
+
+So: **after any change to audio, check all six, not the one that was fixed.**
+
+1. A passage plays.
+2. A passage plays with the ring switch set to silent.
+3. The device test hears a hummed note.
+4. The device test still hears one after a passage was played.
+5. A passage still plays after the device test has run.
+6. Leaving the page gives the device back — other tabs and apps have sound.
+
+One and five and six can be checked here; two, three and four need the iPad.
+Ask for them as one round, not as six separate complaints.
 
 ## What works
 

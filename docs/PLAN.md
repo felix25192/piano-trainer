@@ -1008,3 +1008,61 @@ Und eine allgemeine Lehre: dass etwas funktioniert, heisst nicht, dass es aus
 dem richtigen Grund funktioniert. Der Stummmodus ging morgens nur, weil eine
 vergessene Testseite nebenher eine Aufnahmesitzung offen hielt. Wer das als
 "geht ja" abgehakt haette, haette es spaeter und unerklaerlicher verloren.
+
+## Ein Besitzer fuer die Audio-Sitzung (23.09.2026)
+
+Felix: "Wir planen nicht richtig, sondern ich beschwere mich und du fixt
+Kleinigkeiten und machst damit anderes wieder kaputt." Er hatte recht, und das
+Beispiel ist schlimmer als es aussieht: die Kollision stand im selben Commit,
+mit dem sie ausgeloest wurde.
+
+Die Kette ging so. Die Testseite gab das Mikrofon nie frei, also war das ganze
+Geraet stumm. Freigabe eingebaut - damit war die Wiedergabe im Stummmodus weg,
+denn die hatte von der Aufnahmesitzung gelebt, die den Klingelschalter
+ignoriert. Also `audioSession.type = "playback"` gesetzt - damit war das
+Mikrofon kaputt, weil eine Seite nur eine Kategorie halten kann.
+
+Jede Reparatur wurde fuer sich geprueft. Keine dagegen, was vorher ging.
+
+### Das Problem war nicht dreimal, sondern einmal
+
+Die Audio-Sitzung ist **eine exklusive Ressource des Geraets**, und drei
+Stellen im Code fassten sie unabhaengig voneinander an. Das ist kein Fehler,
+den man dreimal repariert, sondern ein fehlender Besitzer.
+
+`core/audioMode.ts` traegt jetzt die Regel: die App ist immer in genau einem
+von `idle`, `playing`, `listening`, jeder Modus braucht eine Kategorie, und ein
+Wechsel gibt erst frei und nimmt dann. Rein und getestet - die Regel stand
+vorher als Kommentar an drei Stellen und wurde von keiner befolgt.
+
+`adapters/audioSession.ts` ist die einzige Datei, die noch `new AudioContext`,
+`navigator.audioSession.type` oder `getUserMedia` anfasst. Ein grep haelt das
+nach; der einzige verbleibende Treffer ausserhalb ist eine Existenzpruefung in
+der Umgebungskarte der Testseite.
+
+Bewusst eine geteilte Instanz. Das Geraet hat genau eine Sitzung, und sie als
+ein Objekt zu modellieren ist ehrlich - vor allem macht es den Fehler
+unmoeglich, der dazu gefuehrt hat.
+
+### Verborgen ist nicht dasselbe wie verlassen
+
+Beim Pruefen fiel eine Luecke auf: App und Testseite sind zwei Seiten, und ein
+Modul lebt pro Dokument. Jede haette ihren eigenen Besitzer, und sie wuerden
+sich das Geraet gegenseitig streitig machen - die Invariante haette genau an
+der Seitengrenze aufgehoert, wo sie gebraucht wird.
+
+Also unterscheidet der Besitzer zwei Faelle. Nur verborgen, also ein anderer
+Tab davor, gibt das Mikrofon frei und sonst nichts; Wiedergabe bleibt, weil ein
+weggeschalteter Tab am Desktop weiterspielen soll. Die Seite verlassen gibt
+alles frei - und genau das passiert auf dem Weg von der App zum Geraetetest.
+
+### Die Liste, die das Wiederholen verhindert
+
+Sechs Punkte stehen jetzt in `CLAUDE.md`, und sie werden nach **jeder**
+Aenderung an Audio durchgegangen, nicht nur die eine reparierte Sache. Drei
+davon lassen sich hier pruefen, drei nur auf dem Geraet - und die kommen als
+eine Runde, nicht als sechs einzelne Beschwerden.
+
+Das ist die eigentliche Lehre des Tages, und sie ist prozessual, nicht
+technisch: eine Reparatur, die nur gegen ihr eigenes Symptom geprueft wird,
+ist kein Fortschritt, sondern eine Verschiebung.

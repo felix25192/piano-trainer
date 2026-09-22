@@ -1,5 +1,6 @@
 import type { NoteOutput } from "../core/NoteOutput";
 import type { ScheduledNote } from "../core/playback";
+import { audioSession } from "./audioSession";
 
 /**
  * Plays the notes from recordings of a real piano.
@@ -107,13 +108,10 @@ export class SampledPiano implements NoteOutput {
 
   async start(notes: readonly ScheduledNote[]): Promise<void> {
     this.stop();
-    // Again on every start, not only at construction: Safari may not have had
-    // a session to configure the first time.
-    claimPlaybackSession();
 
-    // Waking has to be asked for inside the gesture that called us, before the
-    // first await — which is why starting playback is a tap and never an
-    // effect.
+    // Asking for the device has to happen inside the gesture that called us,
+    // before the first await — which is why starting playback is a tap and
+    // never an effect.
     const ctx = await this.wake();
 
     const mine = this.generation;
@@ -130,33 +128,35 @@ export class SampledPiano implements NoteOutput {
   }
 
   /**
-   * Gets a context that is actually running, and says so if it cannot.
+   * Takes the device for playing back, rebuilding if a new context came back.
    *
-   * A context does not only start suspended on iOS — it can also be taken away
-   * again later. Safari parks it when the system claims the audio session: a
-   * page holding a microphone, a call, the ring switch. The context then stays
-   * put, its clock stops advancing, and everything scheduled against it is
-   * silent while the app cheerfully believes it is playing. That is the worst
-   * kind of failure, because it looks like working.
-   *
-   * So `resume` is awaited rather than fired off, and the state is checked
-   * afterwards. One that will not come back is thrown away and built again —
-   * the recordings go with it, since they belong to the context that decoded
-   * them. If even a fresh one refuses, that is reported rather than swallowed.
+   * A new one arrives whenever the device changed hands: the session tears the
+   * old context down rather than reusing it, because Safari files a context
+   * under the session that was in force when it was built. Recordings belong
+   * to the context that decoded them, so they go with it.
    */
   private async wake(): Promise<AudioContext> {
-    const ctx = this.context();
-    if (await running(ctx)) return ctx;
+    const ctx = await audioSession.play();
+    if (ctx === this.ctx && this.master) return ctx;
 
-    this.teardown();
-    const fresh = this.context();
-    if (await running(fresh)) return fresh;
+    this.buffers.clear();
+    this.loading.clear();
+    this.voices = [];
 
-    throw new Error(
-      "Das Gerät gibt gerade keinen Ton frei. Das passiert, wenn eine andere " +
-        "Seite oder App das Mikrofon hält, oder wenn der Stummschalter am iPad " +
-        "aktiv ist.",
-    );
+    const master = ctx.createGain();
+    master.gain.value = MASTER_LEVEL;
+
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = LIMIT_DB;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 12;
+
+    master.connect(limiter);
+    limiter.connect(ctx.destination);
+
+    this.ctx = ctx;
+    this.master = master;
+    return ctx;
   }
 
   stop(): void {
@@ -195,17 +195,13 @@ export class SampledPiano implements NoteOutput {
 
   dispose(): void {
     this.stop();
-    this.teardown();
-  }
-
-  /** Gives the audio hardware back and forgets everything decoded against it. */
-  private teardown(): void {
-    void this.ctx?.close();
     this.ctx = null;
     this.master = null;
     this.voices = [];
     this.buffers.clear();
     this.loading.clear();
+    // Only give the device back if we are the ones holding it.
+    if (audioSession.current === "playing") void audioSession.release();
   }
 
   /**
@@ -234,7 +230,8 @@ export class SampledPiano implements NoteOutput {
   }
 
   private async load(index: number): Promise<AudioBuffer> {
-    const ctx = this.context();
+    const ctx = this.ctx;
+    if (!ctx) throw new Error("Kein Audio-Kontext zum Dekodieren.");
     // BASE_URL is "/" in development and "/piano-trainer/" in the build.
     const url = `${import.meta.env.BASE_URL}piano/${SAMPLES[index]}.mp3`;
 
@@ -311,75 +308,6 @@ export class SampledPiano implements NoteOutput {
     source.start(at);
     source.stop(end + release * 6);
   }
-
-  private context(): AudioContext {
-    if (this.ctx) return this.ctx;
-
-    // Has to be claimed before the context exists, or the context is built
-    // against the session Safari had already chosen.
-    claimPlaybackSession();
-    const ctx = new AudioContext();
-
-    const master = ctx.createGain();
-    master.gain.value = MASTER_LEVEL;
-
-    const limiter = ctx.createDynamicsCompressor();
-    limiter.threshold.value = LIMIT_DB;
-    limiter.knee.value = 0;
-    limiter.ratio.value = 12;
-
-    master.connect(limiter);
-    limiter.connect(ctx.destination);
-
-    this.ctx = ctx;
-    this.master = master;
-    return ctx;
-  }
-}
-
-/**
- * Tells the device that this page plays music, not incidental sound.
- *
- * Safari files a bare AudioContext under "ambient", and the ring switch
- * silences that category outright — which is right for a page that beeps and
- * wrong for one someone practises to. "playback" is the category a music
- * player belongs in, and it is not silenced.
- *
- * This was found the hard way. For a while the app played with the switch on,
- * and it looked like it simply worked; in fact a microphone test page was
- * holding a recording session, whose category also ignores the switch, and the
- * app was living off it. Releasing the microphone properly took that away and
- * the real default came back.
- *
- * Only Safari 16.4 and later, and not in the type definitions yet, hence the
- * narrow cast. Where it is missing the ring switch keeps the last word, which
- * is the behaviour we already had. When the microphone arrives this becomes
- * "play-and-record", because a page can only hold one category at a time.
- */
-function claimPlaybackSession(): void {
-  const session = (navigator as Navigator & { audioSession?: { type: string } })
-    .audioSession;
-  if (session) session.type = "playback";
-}
-
-/** True when this browser can make a sound at all. */
-export function isAudioSupported(): boolean {
-  return typeof AudioContext !== "undefined";
-}
-
-/**
- * Asks a context to run and reports whether it did.
- *
- * `resume` rejects outright in some states and simply does nothing in others,
- * so the promise is not the answer — the state afterwards is.
- */
-async function running(ctx: AudioContext): Promise<boolean> {
-  try {
-    await ctx.resume();
-  } catch {
-    // Some states refuse; the check below decides either way.
-  }
-  return ctx.state === "running";
 }
 
 /** The recording nearest a pitch, so nothing is shifted by more than a semitone. */
