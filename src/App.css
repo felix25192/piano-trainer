@@ -1,122 +1,251 @@
 :root {
   --bg: #12141a;
   --panel: #1b1f28;
+  --raised: #262b36;
+  --line: #333a49;
   --ink: #e8eaf0;
   --muted: #8b93a7;
   --accent: #5b8cff;
   --ok: #3ecf8e;
   --bad: #ff6b6b;
+
+  --touch: 48px;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+  /* Kills the 300ms delay and double-tap-to-zoom, which otherwise fires when
+     the advance button is tapped twice quickly. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body, #root { height: 100%; }
 
 body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  overscroll-behavior: none;
 }
+
+button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
 
 .app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  padding: 16px;
-  gap: 12px;
+  height: 100%;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
-.bar {
+/* ---------- one slim bar holds everything the eye needs ---------- */
+
+.topbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 12px;
+  gap: 14px;
+  padding: 0 6px 0 12px;
+  min-height: 44px;
+  flex: none;
+}
+
+.piece {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.measure {
+  flex: none;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The one thing worth glancing at mid-piece. */
+.expect {
+  flex: 1;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.expect b {
+  color: var(--ink);
+  font: 600 15px ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.expect.error, .expect.error b { color: var(--bad); }
+.expect.done b { color: var(--ok); }
+
+.icon-button {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.icon-button:active { background: var(--raised); color: var(--ink); }
+
+/* ---------- the score gets everything that is left ---------- */
+
+.scroller {
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: #fff;
+  border-radius: 12px;
+  margin: 0 8px;
+  overscroll-behavior-x: contain;
+}
+
+.scroller > div { height: 100%; }
+
+/* ---------- placeholder controls, until the piano drives this ---------- */
+
+.actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  flex: none;
+}
+
+.actions button {
+  height: var(--touch);
+  border: 0;
+  border-radius: 12px;
+  font: 600 15px system-ui;
+  color: var(--ink);
+  background: var(--raised);
+  cursor: pointer;
+}
+
+.actions button:active { filter: brightness(1.4); }
+.actions button:disabled { opacity: .4; }
+
+.primary {
+  flex: 1;
+  background: var(--accent) !important;
+  color: #fff !important;
+}
+
+.secondary { width: var(--touch); flex: none; font-size: 18px !important; }
+
+/* ---------- settings ---------- */
+
+.backdrop { position: fixed; inset: 0; background: #000a; border: 0; padding: 0; }
+
+.sheet {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
   background: var(--panel);
+  border-radius: 18px 18px 0 0;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 85%;
+  overflow-y: auto;
+}
+
+.sheet h2 { margin: 0; font-size: 16px; }
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > span { color: var(--muted); font-size: 13px; }
+
+.field select {
+  height: var(--touch);
+  padding: 0 12px;
+  font: 15px system-ui;
+  color: var(--ink);
+  background: var(--raised);
+  border: 1px solid var(--line);
   border-radius: 10px;
 }
 
-.bar select,
-.bar button {
-  background: #262b36;
+.stepper { display: flex; align-items: center; gap: 8px; }
+
+.stepper button {
+  width: var(--touch);
+  height: var(--touch);
+  flex: none;
+  font-size: 22px;
   color: var(--ink);
-  border: 1px solid #333a49;
-  border-radius: 7px;
-  padding: 7px 12px;
-  font: inherit;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
   cursor: pointer;
 }
 
-.bar button:hover { border-color: var(--accent); }
+.stepper button:active { filter: brightness(1.4); }
+.stepper button:disabled { opacity: .35; }
 
-.toggle {
+.stepper output {
+  flex: 1;
+  text-align: center;
+  font: 600 16px ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.row-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: var(--touch);
   color: var(--muted);
+  font-size: 14px;
+}
+
+.sheet .close {
+  height: var(--touch);
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  font: 600 15px system-ui;
   cursor: pointer;
 }
 
-.status {
-  margin-left: auto;
-  font-variant-numeric: tabular-nums;
-  color: var(--muted);
-}
-.status-ready  { color: var(--ok); }
-.status-failed { color: var(--bad); }
+.hint { color: var(--muted); font-size: 12px; margin: 0; }
 
-.cursor-info {
-  margin: 0;
-  color: var(--muted);
-  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
-}
-
-.error {
-  margin: 0;
-  padding: 12px;
+.error-box {
+  margin: 0 8px 8px;
+  padding: 10px;
   background: #2a1a1d;
   border: 1px solid var(--bad);
-  border-radius: 8px;
+  border-radius: 10px;
   color: var(--bad);
+  font-size: 12px;
   white-space: pre-wrap;
 }
 
-/* The horizontal viewport. OSMD draws one very wide SVG inside this. */
-.scroller {
-  flex: 1;
-  overflow-x: auto;
-  overflow-y: auto;
-  background: #fff;
-  border-radius: 10px;
-  padding: 8px;
+/* ---------- landscape phone: every pixel of height counts ---------- */
+
+@media (max-height: 460px) {
+  .topbar { min-height: 36px; }
+  .actions { padding: 6px 8px; }
+  .actions button { height: 40px; }
+  .scroller { margin: 0 6px; }
 }
 
-.mono {
-  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
-}
-
-.dim { color: var(--muted); }
-
-.bar input[type="range"] {
-  width: 110px;
-  accent-color: var(--accent);
-}
-
-/* Live view of what the engine is waiting for. */
-.readout {
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
-  align-items: center;
-  padding: 10px 14px;
-  background: var(--panel);
-  border: 1px solid transparent;
-  border-radius: 10px;
-  color: var(--muted);
-}
-
-.readout b { color: var(--ink); font-weight: 600; }
-
-.readout-error {
-  border-color: var(--bad);
-  background: #2a1a1d;
+@media (min-width: 900px) {
+  .actions { max-width: 720px; margin: 0 auto; width: 100%; }
 }

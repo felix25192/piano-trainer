@@ -258,3 +258,55 @@ Autokorrelation.
 **Noch offen: auf dem iPad aufrufen.** Dafür muss der Entwicklungsserver
 im WLAN erreichbar sein (`vite --host`), was die Firmen-Firewall
 blockieren könnte.
+
+## Oberflaeche fuer das Querformat (22.09.2026)
+
+Genutzt wird die App auf iPhone und iPad **im Querformat**. Damit ist die
+Hoehe der Engpass, nicht die Breite — genau umgekehrt zur ersten Annahme.
+
+Zweite Einsicht: **Beim Ueben wird der Bildschirm nicht angefasst.** Beide
+Haende liegen auf den Tasten, das Instrument treibt die App. Die Bedienung
+darf also klein und am Rand bleiben; der Platz gehoert den Noten.
+
+Daraus folgte der Umbau:
+- Eine schlanke Leiste haelt Stueck, Takt und die erwarteten Toene. Die
+  frueheren drei Leisten frassen 170 von 375 Pixeln Hoehe.
+- Bedienelemente touch-tauglich: 48 Pixel Mindesthoehe, `touch-action:
+  manipulation` gegen das Doppeltipp-Zoomen, Safe-Area-Raender fuer Notch
+  und Home-Indikator.
+- Einstellungen liegen in einem Blatt von unten statt dauerhaft im Bild.
+
+### Notengroesse passt sich selbst an
+
+`applyFit()` rendert, misst die entstandene Systemhoehe und korrigiert den
+Zoom, bis ein System genau die verfuegbare Hoehe fuellt. OSMD kennt kein
+Viewport-Konzept, also ist Messen und Nachkorrigieren der einzige Weg. Feste
+Raender sorgen dafuer, dass ein Durchgang untertrifft — die Schleife
+konvergiert nach zwei bis drei.
+
+Ein ResizeObserver wiederholt das beim Drehen des Geraets.
+
+Nebeneffekt, der die Anforderung "2-3 Takte" von selbst erfuellt: Die Hoehe
+bestimmt die Notengroesse, die Notengroesse bestimmt, wie viele Takte in die
+Breite passen. Auf iPad-Massen (1180x820) sind es zweieinhalb Takte bei
+grossen Noten, auf einem Handy im Querformat rund fuenf bei kleineren. Das
+ist die richtige Kopplung, keine Einstellung noetig.
+
+### Platz zurueckgewonnen
+
+`tightenForScreen()` entfernt die Druck-Annahmen: Seitenraender auf null,
+dazu `RenderFirstTempoExpression` und `MetronomeMarksDrawn` aus. Beide
+setzen ein Band ueber dem ersten System, das alle folgenden Systeme erben —
+ein einziges "Allegro" in Takt 1 verkleinerte jede Note im ganzen Stueck.
+
+### Offen: das Band zwischen den Systemen
+
+Im SVG nachgemessen: Die Dynamikzeichen (p, f, cresc.) liegen bei y≈266-308,
+also im Zwischenraum der beiden Systeme, und OSMD reserviert diese Hoehe
+ueber das ganze Stueck — auch dort, wo keine Dynamik steht. Einen Schalter
+dagegen gibt es in den EngravingRules nicht (`RenderFirstTempoExpression`
+ja, Dynamik nein).
+
+Zielkonflikt: Hauptziel ist Notenlesen, dafuer waere der Platz besser in
+groesseren Noten angelegt. Dynamik gehoert aber zum richtigen Lesen dazu.
+Zu entscheiden, wenn die App auf dem echten Geraet ausprobiert wurde.

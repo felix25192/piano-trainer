@@ -7,13 +7,14 @@ import { extractScore } from "./adapters/osmdScore";
 import "./App.css";
 
 /**
- * Development shell around the engine.
+ * Development shell around the engine, laid out for a tablet or phone held in
+ * landscape on a music stand.
  *
- * There is no instrument attached yet, so the two buttons stand in for one:
- * "correct" feeds the engine exactly what the score asks for, "wrong" feeds
- * something else. Once MidiInput exists it will call the same `play()` with
- * real notes and nothing else here has to change — that is the point of the
- * NoteInputSource port.
+ * While practising, the screen is never touched — both hands are on the keys
+ * and the instrument drives the app. So the score gets the room and the
+ * controls stay out of the way. The two buttons at the bottom stand in for an
+ * instrument until MidiInput is wired up; they call the same `play()` a real
+ * adapter will, which is what the NoteInputSource port buys us.
  */
 
 // BASE_URL is "/" during development and "/piano-trainer/" in the build, so
@@ -24,10 +25,14 @@ const SCORES = [
     url: `${import.meta.env.BASE_URL}scores/clementi-sonatina-op36-no1.xml`,
   },
   {
-    label: "Beethoven — Moonlight Sonata, 1st mvt.",
+    label: "Beethoven — Mondscheinsonate, 1. Satz",
     url: `${import.meta.env.BASE_URL}scores/moonlight-sonata-mvt1.mxl`,
   },
 ] as const;
+
+const ZOOM_MIN = 0.4;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 0.1;
 
 export default function App() {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -36,41 +41,103 @@ export default function App() {
   const matcherRef = useRef<NoteMatcher | null>(null);
   /** Where OSMD's own cursor stands, so it can be walked to the engine's position. */
   const cursorIndexRef = useRef(0);
+  /** Guards against the resize observer re-entering while a fit is running. */
+  const fittingRef = useRef(false);
 
   const [scoreUrl, setScoreUrl] = useState<string>(SCORES[0].url);
-  const [zoom, setZoom] = useState(1.4);
+  const [zoom, setZoom] = useState(1.2);
+  const [autoFit, setAutoFit] = useState(true);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState<string | null>(null);
   const [score, setScore] = useState<Score | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [tick, setTick] = useState(0);
   const [lastOutcome, setLastOutcome] = useState<MatchOutcome | null>(null);
 
+  /** Puts OSMD's cursor back where the engine stands after a re-render. */
+  const restoreCursor = useCallback(() => {
+    const osmd = osmdRef.current;
+    if (!osmd) return;
+    osmd.cursor.show();
+    osmd.cursor.reset();
+    cursorIndexRef.current = 0;
+    const target = matcherRef.current?.progress.stepIndex ?? 0;
+    let guard = 0;
+    while (cursorIndexRef.current < target && guard++ < 10_000) {
+      osmd.cursor.next();
+      cursorIndexRef.current++;
+    }
+  }, []);
+
+  /**
+   * Scales the engraving until one system fills the available height.
+   *
+   * OSMD engraves for a printed page and has no notion of a viewport, so the
+   * only way to find the right zoom is to render, measure what came out, and
+   * correct. Fixed margins mean one pass undershoots, hence the loop — it
+   * converges in two or three.
+   */
+  const applyFit = useCallback(() => {
+    const osmd = osmdRef.current;
+    const scroller = scrollRef.current;
+    if (!osmd || !scroller || fittingRef.current) return;
+
+    fittingRef.current = true;
+    try {
+      for (let pass = 0; pass < 4; pass++) {
+        const svg = scroller.querySelector("svg");
+        const available = scroller.clientHeight;
+        if (!svg || available <= 0) break;
+
+        const rendered = svg.getBoundingClientRect().height;
+        if (rendered <= 0) break;
+
+        const factor = available / rendered;
+        if (Math.abs(factor - 1) < 0.04) break;
+
+        const next = clamp(osmd.zoom * factor, ZOOM_MIN, ZOOM_MAX);
+        if (Math.abs(next - osmd.zoom) < 0.02) break;
+
+        osmd.zoom = next;
+        osmd.render();
+      }
+      setZoom(round(osmd.zoom));
+      restoreCursor();
+      scrollCursorIntoView(osmd, scroller, "auto");
+    } finally {
+      fittingRef.current = false;
+    }
+  }, [restoreCursor]);
+
+  // Load and render whenever the piece changes.
   useEffect(() => {
     let cancelled = false;
     const host = hostRef.current;
     if (!host) return;
 
     setError(null);
-    setStatus("loading");
+    setStatus("lädt");
     setScore(null);
     matcherRef.current = null;
 
     host.innerHTML = "";
     const osmd = new OpenSheetMusicDisplay(host, {
-      autoResize: true,
+      autoResize: false, // we re-render ourselves, through the fit
       backend: "svg",
       drawTitle: false,
       drawComposer: false,
       followCursor: false,
+      // Default spacing assumes a printed page and wastes most of a phone
+      // screen on margins between the staves.
+      drawingParameters: "compacttight",
     });
     osmdRef.current = osmd;
-    osmd.EngravingRules.RenderSingleHorizontalStaffline = true;
+    tightenForScreen(osmd);
 
     osmd
       .load(scoreUrl)
       .then(() => {
         if (cancelled) return;
-        setStatus("rendering");
         osmd.zoom = zoom;
         osmd.render();
         osmd.cursor.show();
@@ -79,17 +146,18 @@ export default function App() {
         const extracted = extractScore(osmd, label);
 
         matcherRef.current = new NoteMatcher(extracted);
-        cursorIndexRef.current = 0;
-        syncCursor(osmd, matcherRef.current.progress.stepIndex, cursorIndexRef);
-
         setScore(extracted);
-        setStatus("ready");
+        setStatus("bereit");
+
+        if (autoFit) applyFit();
+        else restoreCursor();
+
         setTick((t) => t + 1);
       })
       .catch((e: unknown) => {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : String(e));
-        setStatus("failed");
+        setStatus("fehlgeschlagen");
       });
 
     return () => {
@@ -101,23 +169,39 @@ export default function App() {
       }
       if (osmdRef.current === osmd) osmdRef.current = null;
     };
-    // `zoom` is applied here on first render but changed through its own
-    // effect, so re-running the whole load for it would be wasteful.
+    // zoom and autoFit are read once here; changing them must not re-parse the
+    // file, so they drive their own effects instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scoreUrl]);
 
-  // Zoom re-engraves without re-parsing the file.
+  // Manual zoom: re-engrave without re-parsing.
   useEffect(() => {
     const osmd = osmdRef.current;
-    if (!osmd || !score) return;
+    if (!osmd || !score || autoFit || fittingRef.current) return;
+    if (Math.abs(osmd.zoom - zoom) < 0.001) return;
     osmd.zoom = zoom;
     osmd.render();
-    osmd.cursor.show();
-    cursorIndexRef.current = 0;
-    const target = matcherRef.current?.progress.stepIndex ?? 0;
-    syncCursor(osmd, target, cursorIndexRef);
+    restoreCursor();
     scrollCursorIntoView(osmd, scrollRef.current, "auto");
-  }, [zoom, score]);
+  }, [zoom, score, autoFit, restoreCursor]);
+
+  // Re-fit when the viewport changes — rotating the device is the main case.
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller || !score || !autoFit) return;
+
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => applyFit());
+    });
+    observer.observe(scroller);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [score, autoFit, applyFit]);
 
   /** The single entry point for played notes — real or simulated. */
   const play = useCallback((midi: number) => {
@@ -129,7 +213,11 @@ export default function App() {
     setLastOutcome(outcome);
 
     if (outcome.kind === "advanced") {
-      syncCursor(osmd, matcher.progress.stepIndex, cursorIndexRef);
+      let guard = 0;
+      while (cursorIndexRef.current < matcher.progress.stepIndex && guard++ < 10_000) {
+        osmd.cursor.next();
+        cursorIndexRef.current++;
+      }
       scrollCursorIntoView(osmd, scrollRef.current, "smooth");
     }
     setTick((t) => t + 1);
@@ -149,16 +237,12 @@ export default function App() {
   }, [play]);
 
   const restart = useCallback(() => {
-    const osmd = osmdRef.current;
-    if (!osmd || !matcherRef.current) return;
-    matcherRef.current.reset();
-    osmd.cursor.reset();
-    cursorIndexRef.current = 0;
-    syncCursor(osmd, matcherRef.current.progress.stepIndex, cursorIndexRef);
-    scrollCursorIntoView(osmd, scrollRef.current, "auto");
+    matcherRef.current?.reset();
+    restoreCursor();
+    scrollCursorIntoView(osmdRef.current, scrollRef.current, "auto");
     setLastOutcome(null);
     setTick((t) => t + 1);
-  }, []);
+  }, [restoreCursor]);
 
   // Registered once; the ref keeps the space bar on the same path as the button.
   const playCorrectRef = useRef(playCorrect);
@@ -176,99 +260,190 @@ export default function App() {
   const progress = matcherRef.current?.progress;
   void tick; // progress is read off a ref; `tick` is what forces the re-read
 
+  const pieceLabel = SCORES.find((s) => s.url === scoreUrl)?.label ?? "—";
+  const busy = status !== "bereit";
+
+  function setZoomManually(next: number) {
+    setAutoFit(false);
+    setZoom(round(clamp(next, ZOOM_MIN, ZOOM_MAX)));
+  }
+
   return (
     <div className="app">
-      <header className="bar">
-        <select value={scoreUrl} onChange={(e) => setScoreUrl(e.target.value)}>
-          {SCORES.map((s) => (
-            <option key={s.url} value={s.url}>{s.label}</option>
-          ))}
-        </select>
-
-        <label className="toggle">
-          zoom
-          <input
-            type="range"
-            min={0.6}
-            max={3}
-            step={0.1}
-            value={zoom}
-            onChange={(e) => setZoom(Number(e.target.value))}
-          />
-          <span className="mono">{zoom.toFixed(1)}×</span>
-        </label>
-
-        <button onClick={restart}>restart</button>
-        <button onClick={playCorrect}>play correct (space)</button>
-        <button onClick={playWrong}>play wrong</button>
-
-        <span className={`status status-${status}`}>{status}</span>
+      <header className="topbar">
+        <span className="piece">{pieceLabel}</span>
+        {progress && !progress.finished && (
+          <span className="measure">Takt {progress.measure}</span>
+        )}
+        <span
+          className={
+            "expect" +
+            (progress?.hasError ? " error" : "") +
+            (progress?.finished ? " done" : "")
+          }
+        >
+          {busy ? status : expectation(progress, lastOutcome)}
+        </span>
+        <button
+          className="icon-button"
+          onClick={() => setSettingsOpen(true)}
+          aria-label="Einstellungen"
+        >
+          ⚙
+        </button>
       </header>
 
-      {progress && (
-        <div className={`readout ${progress.hasError ? "readout-error" : ""}`}>
-          <span>
-            measure <b>{progress.measure}</b>
-          </span>
-          <span>
-            step <b>{progress.stepIndex}</b> / {progress.totalSteps}
-          </span>
-          <span>
-            expecting{" "}
-            <b className="mono">
-              {progress.finished
-                ? "— finished —"
-                : progress.remaining.map((m) => midiToName(m)).join(" + ") || "—"}
-            </b>
-          </span>
-          {lastOutcome && <span className="mono dim">{describe(lastOutcome)}</span>}
-        </div>
-      )}
-
-      {error && <pre className="error">{error}</pre>}
+      {error && <pre className="error-box">{error}</pre>}
 
       <div className="scroller" ref={scrollRef}>
         <div ref={hostRef} />
       </div>
+
+      <div className="actions">
+        <button className="secondary" onClick={restart} aria-label="Von vorn" disabled={busy}>
+          ↺
+        </button>
+        <button className="primary" onClick={playCorrect} disabled={busy || progress?.finished}>
+          richtigen Ton spielen
+        </button>
+        <button
+          className="secondary"
+          onClick={playWrong}
+          aria-label="Falschen Ton spielen"
+          disabled={busy || progress?.finished}
+        >
+          ✗
+        </button>
+      </div>
+
+      {settingsOpen && (
+        <>
+          <button
+            className="backdrop"
+            onClick={() => setSettingsOpen(false)}
+            aria-label="Einstellungen schließen"
+          />
+          <div className="sheet" role="dialog" aria-label="Einstellungen">
+            <h2>Einstellungen</h2>
+
+            <label className="field">
+              <span>Stück</span>
+              <select value={scoreUrl} onChange={(e) => setScoreUrl(e.target.value)}>
+                {SCORES.map((s) => (
+                  <option key={s.url} value={s.url}>{s.label}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="row-toggle">
+              An die Bildschirmhöhe anpassen
+              <input
+                type="checkbox"
+                checked={autoFit}
+                onChange={(e) => setAutoFit(e.target.checked)}
+              />
+            </label>
+
+            <div className="field">
+              <span>Notengröße</span>
+              <div className="stepper">
+                <button
+                  onClick={() => setZoomManually(zoom - ZOOM_STEP)}
+                  disabled={zoom <= ZOOM_MIN}
+                  aria-label="Kleiner"
+                >
+                  −
+                </button>
+                <output>{zoom.toFixed(1)}×</output>
+                <button
+                  onClick={() => setZoomManually(zoom + ZOOM_STEP)}
+                  disabled={zoom >= ZOOM_MAX}
+                  aria-label="Größer"
+                >
+                  +
+                </button>
+              </div>
+              <p className="hint">
+                Von Hand einstellen schaltet die automatische Anpassung ab.
+              </p>
+            </div>
+
+            <button className="close" onClick={() => setSettingsOpen(false)}>
+              Fertig
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-function describe(outcome: MatchOutcome): string {
-  switch (outcome.kind) {
-    case "advanced":
-      return "✓ advanced";
-    case "progress":
-      return `✓ still needs ${outcome.remaining.map((m) => midiToName(m)).join(" + ")}`;
-    case "wrong":
-      return `✗ ${midiToName(outcome.played)} is not in this step`;
-    case "ignored":
-      return `· ignored (${outcome.reason})`;
-  }
+/**
+ * Strips the page-layout assumptions out of the engraving.
+ *
+ * OSMD lays music out for print: margins for a sheet of paper, room above the
+ * first system for the tempo marking. On a screen that space is pure loss, and
+ * it costs more than it looks — the system height is uniform across the whole
+ * piece, so one "Allegro" in bar 1 drags an empty band along for all 518 steps
+ * and shrinks every note to make room for it.
+ */
+function tightenForScreen(osmd: OpenSheetMusicDisplay): void {
+  const rules = osmd.EngravingRules;
+
+  // The whole piece as one continuous line to scroll sideways.
+  rules.RenderSingleHorizontalStaffline = true;
+
+  // Tempo wording ("Allegro") and the metronome mark. Both sit in a band above
+  // the first system that every later system then inherits. The instrument
+  // sets the pace here anyway, not the score.
+  rules.RenderFirstTempoExpression = false;
+  rules.MetronomeMarksDrawn = false;
+
+  // Paper margins.
+  rules.PageTopMargin = 0;
+  rules.PageBottomMargin = 0;
+  rules.PageLeftMargin = 0;
+  rules.PageRightMargin = 0;
 }
 
-/**
- * Walks OSMD's cursor to the engine's position. The two can drift apart
- * because the engine skips rests and OSMD does not.
- */
-function syncCursor(
-  osmd: OpenSheetMusicDisplay,
-  targetIndex: number,
-  currentIndex: { current: number },
-): void {
-  let guard = 0;
-  while (currentIndex.current < targetIndex && guard++ < 10_000) {
-    osmd.cursor.next();
-    currentIndex.current++;
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v));
+}
+
+/** Avoids 1.7999999999999998 from repeated floating point addition. */
+function round(z: number): number {
+  return Math.round(z * 10) / 10;
+}
+
+function expectation(
+  progress: { remaining: number[]; finished: boolean } | undefined,
+  outcome: MatchOutcome | null,
+): React.ReactNode {
+  if (!progress) return "—";
+  if (progress.finished) return <b>zu Ende</b>;
+
+  if (outcome?.kind === "wrong") {
+    return (
+      <>
+        {midiToName(outcome.played)} ✗ — erwartet{" "}
+        <b>{outcome.expected.map((m) => midiToName(m)).join(" ")}</b>
+      </>
+    );
   }
+
+  return (
+    <>
+      erwartet <b>{progress.remaining.map((m) => midiToName(m)).join(" ") || "—"}</b>
+    </>
+  );
 }
 
 function scrollCursorIntoView(
-  osmd: OpenSheetMusicDisplay,
+  osmd: OpenSheetMusicDisplay | null,
   scroller: HTMLDivElement | null,
   behavior: ScrollBehavior,
 ): void {
-  if (!scroller) return;
+  if (!osmd || !scroller) return;
   const el = osmd.cursor?.cursorElement as HTMLElement | undefined;
   if (!el) return;
 
