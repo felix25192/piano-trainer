@@ -182,14 +182,6 @@ const MINOR_KEYS: Array<[Letter, number]> = [
 ];
 
 /**
- * Speeds offered for playing a passage back, as a share of what is written.
- *
- * The score's own tempo is the default, because hearing it as meant is the
- * point. But the marks in these files are performance tempi — the Beethoven
- * asks for 180 — and a passage you cannot follow teaches nothing, so the
- * slower steps are there for a first pass.
- */
-/**
  * How long to keep the playback alive after the last note is due.
  *
  * Stopping the moment the written length runs out would cut the damper off
@@ -206,6 +198,24 @@ const PLAYBACK_TAIL_SECONDS = 0.5;
  */
 const FOLLOW_MS = 40;
 
+/**
+ * How long playback may go without the audio clock moving before it is given
+ * up on.
+ *
+ * The clock stopping is what an interrupted audio session looks like from up
+ * here: notes are scheduled, nothing sounds, and the stop button sits there lit
+ * forever. Better to say so.
+ */
+const STALL_SECONDS = 2;
+
+/**
+ * Speeds offered for playing a passage back, as a share of what is written.
+ *
+ * The score's own tempo is the default, because hearing it as meant is the
+ * point. But the marks in these files are performance tempi — the Beethoven
+ * asks for 180 — and a passage you cannot follow teaches nothing, so the
+ * slower steps are there for a first pass.
+ */
 const TEMPO_FACTORS: Array<[number, string]> = [
   [0.5, "50 %"],
   [0.75, "75 %"],
@@ -245,6 +255,8 @@ export default function App() {
   const scheduleRef = useRef<Schedule | null>(null);
   /** The timer that keeps the highlight on the note being heard. */
   const followRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** Wall clock at the start of playback, to notice an audio clock that stops. */
+  const startedWallRef = useRef(0);
 
   const [view, setView] = useState<View>("home");
   const [selected, setSelected] = useState<Selection>(BUNDLED[0]);
@@ -371,6 +383,17 @@ export default function App() {
 
     if (!schedule || !matcher || elapsed === null || elapsed === undefined) {
       stopPlayback();
+      return;
+    }
+
+    // The audio clock has not moved although real time has: the device took
+    // the audio session away mid-passage.
+    if (elapsed <= 0 && (performance.now() - startedWallRef.current) / 1000 > STALL_SECONDS) {
+      stopPlayback();
+      setAudioError(
+        "Der Ton wurde vom Ger\u00e4t angehalten. Andere Seiten oder Apps schliessen, " +
+          "die das Mikrofon benutzen, und den Stummschalter pr\u00fcfen.",
+      );
       return;
     }
 
@@ -773,6 +796,7 @@ export default function App() {
     if (output.elapsed() === null) return;
 
     setPlayback("playing");
+    startedWallRef.current = performance.now();
     follow();
     followRef.current = setInterval(follow, FOLLOW_MS);
   }

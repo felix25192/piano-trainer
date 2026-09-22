@@ -203,6 +203,14 @@ aim at and still leaves the eyes the work of finding it on the page.
   the page holding it. Cost an hour of "did we break the sound?". The test page
   now has a stop button and releases the stream when it is hidden; MicInput
   will have to do the same, and listening and playing back can never overlap.
+
+  The output survives it now rather than pretending: `SampledPiano` awaits
+  `resume()`, checks the state afterwards, and throws the context away and
+  builds a new one if it will not come back. A context Safari has parked keeps
+  a clock that does not advance, so everything scheduled against it is silent
+  while the app believes it is playing — failure that looks like working. The
+  shell watches for that too and says so after two seconds instead of leaving
+  the stop button lit forever.
 - **Playback on iOS**: Web Audio is silenced by the ring switch, and the
   behaviour from the home screen is untested. Same class of unknown as Spike A.
 - **The first playback of a session needs the network.** The recordings are

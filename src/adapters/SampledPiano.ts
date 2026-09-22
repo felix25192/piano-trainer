@@ -108,11 +108,10 @@ export class SampledPiano implements NoteOutput {
   async start(notes: readonly ScheduledNote[]): Promise<void> {
     this.stop();
 
-    const ctx = this.context();
-    // A context can come up suspended, and on iOS it always does. This has to
-    // happen inside the gesture that called us, before the first await — which
-    // is why starting playback is a tap and never an effect.
-    void ctx.resume();
+    // Waking has to be asked for inside the gesture that called us, before the
+    // first await — which is why starting playback is a tap and never an
+    // effect.
+    const ctx = await this.wake();
 
     const mine = this.generation;
     await this.fetchFor(notes);
@@ -125,6 +124,36 @@ export class SampledPiano implements NoteOutput {
 
     this.schedule();
     this.timer = setInterval(() => this.schedule(), TICK_MS);
+  }
+
+  /**
+   * Gets a context that is actually running, and says so if it cannot.
+   *
+   * A context does not only start suspended on iOS — it can also be taken away
+   * again later. Safari parks it when the system claims the audio session: a
+   * page holding a microphone, a call, the ring switch. The context then stays
+   * put, its clock stops advancing, and everything scheduled against it is
+   * silent while the app cheerfully believes it is playing. That is the worst
+   * kind of failure, because it looks like working.
+   *
+   * So `resume` is awaited rather than fired off, and the state is checked
+   * afterwards. One that will not come back is thrown away and built again —
+   * the recordings go with it, since they belong to the context that decoded
+   * them. If even a fresh one refuses, that is reported rather than swallowed.
+   */
+  private async wake(): Promise<AudioContext> {
+    const ctx = this.context();
+    if (await running(ctx)) return ctx;
+
+    this.teardown();
+    const fresh = this.context();
+    if (await running(fresh)) return fresh;
+
+    throw new Error(
+      "Das Gerät gibt gerade keinen Ton frei. Das passiert, wenn eine andere " +
+        "Seite oder App das Mikrofon hält, oder wenn der Stummschalter am iPad " +
+        "aktiv ist.",
+    );
   }
 
   stop(): void {
@@ -163,9 +192,15 @@ export class SampledPiano implements NoteOutput {
 
   dispose(): void {
     this.stop();
+    this.teardown();
+  }
+
+  /** Gives the audio hardware back and forgets everything decoded against it. */
+  private teardown(): void {
     void this.ctx?.close();
     this.ctx = null;
     this.master = null;
+    this.voices = [];
     this.buffers.clear();
     this.loading.clear();
   }
@@ -299,6 +334,21 @@ export class SampledPiano implements NoteOutput {
 /** True when this browser can make a sound at all. */
 export function isAudioSupported(): boolean {
   return typeof AudioContext !== "undefined";
+}
+
+/**
+ * Asks a context to run and reports whether it did.
+ *
+ * `resume` rejects outright in some states and simply does nothing in others,
+ * so the promise is not the answer — the state afterwards is.
+ */
+async function running(ctx: AudioContext): Promise<boolean> {
+  try {
+    await ctx.resume();
+  } catch {
+    // Some states refuse; the check below decides either way.
+  }
+  return ctx.state === "running";
 }
 
 /** The recording nearest a pitch, so nothing is shifted by more than a semitone. */
