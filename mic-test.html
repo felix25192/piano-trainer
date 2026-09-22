@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>Mikrofon-Test</title>
+<style>
+  :root {
+    --bg: #12141a; --panel: #1b1f28; --raised: #262b36; --ink: #e8eaf0;
+    --muted: #8b93a7; --ok: #3ecf8e; --bad: #ff6b6b; --accent: #5b8cff;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 16px; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, sans-serif;
+  }
+  h1 { font-size: 20px; margin: 4px 0 16px; }
+  .card { background: var(--panel); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; }
+  .row span:last-child { text-align: right; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  .muted { color: var(--muted); }
+  button {
+    width: 100%; min-height: 52px; border: 0; border-radius: 12px;
+    background: var(--accent); color: #fff; font: 600 17px system-ui; cursor: pointer;
+  }
+  button:disabled { background: #333a49; color: var(--muted); }
+  label.toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; color: var(--muted); font-size: 14px; margin-bottom: 12px;
+  }
+  .note { font: 600 46px/1.1 system-ui; text-align: center; margin: 4px 0; }
+  .detail { text-align: center; color: var(--muted); font: 13px ui-monospace, monospace; }
+  .meter { height: 10px; background: var(--raised); border-radius: 5px; overflow: hidden; margin-top: 14px; }
+  .meter > div { height: 100%; background: var(--accent); width: 0; transition: width 60ms linear; }
+  .scale { display: flex; justify-content: space-between; color: var(--muted);
+           font: 11px ui-monospace, monospace; margin-top: 4px; }
+  pre { margin: 10px 0 0; color: var(--bad); font: 12px/1.4 ui-monospace, monospace; white-space: pre-wrap; }
+  .numbers { font: 13px/1.7 ui-monospace, monospace; }
+  .numbers .row { padding: 1px 0; }
+</style>
+</head>
+<body>
+
+<h1>Mikrofon-Test</h1>
+
+<div class="card" id="env"></div>
+
+<div class="card">
+  <label class="toggle">
+    <span>Pegelautomatik des Geräts einschalten</span>
+    <input type="checkbox" id="agc" />
+  </label>
+  <button id="go">Mikrofon starten</button>
+  <pre id="err" hidden></pre>
+</div>
+
+<div class="card">
+  <div class="note" id="note">—</div>
+  <div class="detail" id="cents">noch nicht gestartet</div>
+  <div class="meter"><div id="level"></div></div>
+  <div class="scale"><span>−60 dB</span><span>−40</span><span>−20</span><span>0</span></div>
+</div>
+
+<div class="card numbers" id="numbers" hidden></div>
+
+<script type="module">
+import { detectPitch } from "/src/core/pitchDetect.ts";
+import { frequencyToMidi, midiToName } from "/src/core/pitch.ts";
+
+const $ = (id) => document.getElementById(id);
+
+/* --- Umgebung prüfen ---------------------------------------------------- */
+
+const standalone = window.navigator.standalone === true ||
+  window.matchMedia("(display-mode: standalone)").matches;
+
+const checks = [
+  ["Sicherer Kontext (HTTPS/localhost)", window.isSecureContext],
+  ["getUserMedia vorhanden", !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)],
+  ["AudioContext vorhanden", !!(window.AudioContext || window.webkitAudioContext)],
+  // Den Wert auszulesen wirft "Illegal invocation" - nur auf Existenz pruefen.
+  ["AudioWorklet vorhanden", !!window.AudioContext && "audioWorklet" in AudioContext.prototype],
+  ["Web MIDI vorhanden", typeof navigator.requestMIDIAccess === "function"],
+];
+
+$("env").innerHTML =
+  checks.map(([label, ok]) =>
+    `<div class="row"><span>${label}</span><span class="${ok ? "ok" : "bad"}">${ok ? "ja" : "nein"}</span></div>`
+  ).join("") +
+  `<div class="row"><span>Vom Homescreen gestartet</span><span>${standalone ? "ja" : "nein"}</span></div>` +
+  `<div class="row"><span>Browser</span><span style="font-size:12px">${navigator.userAgent.slice(0, 60)}</span></div>`;
+
+/* --- Mikrofon ------------------------------------------------------------ */
+
+/*
+ * Ein Fenster muss zwei Perioden des tiefsten gesuchten Tons fassen. 4096
+ * Samples sind bei 48 kHz 85 ms und reichen hinunter bis knapp 24 Hz - mehr
+ * als genug fuer eine gebrummte Stimme, und halb so teuer wie 8192.
+ */
+const WINDOW = 4096;
+
+/*
+ * Wie oft ueberhaupt erkannt wird.
+ *
+ * Nicht in jedem Bild: ein Durchgang kostet auf einem Desktop acht
+ * Millisekunden, sechzig Mal in der Sekunde waere eine halbe Rechenkern und
+ * auf einem Tablet schlicht zu viel. Zehn Mal pro Sekunde ist fuer einen
+ * gehaltenen Ton reichlich. Der Pegelbalken laeuft weiter in jedem Bild, der
+ * kostet nichts.
+ */
+const DETECT_EVERY_MS = 100;
+
+/** Effektivpegel in Dezibel, wo 0 dB volle Aussteuerung ist. */
+function toDb(rms) {
+  return rms > 0 ? 20 * Math.log10(rms) : -Infinity;
+}
+
+// iOS verlangt eine echte Nutzergeste, bevor Audio laufen darf. Deshalb der Knopf.
+$("go").addEventListener("click", async () => {
+  const btn = $("go");
+  btn.disabled = true;
+  btn.textContent = "wird gestartet …";
+  $("err").hidden = true;
+
+  try {
+    /*
+     * Echounterdrueckung, Rauschunterdrueckung und Pegelautomatik sind
+     * standardmaessig aus: sie sind fuer Sprache gebaut und zerstoeren
+     * Klaviertoene. Die Pegelautomatik laesst sich hier zuschalten, weil genau
+     * sie der Grund sein kann, dass ein Signal sonst sehr leise ankommt - das
+     * ist eine Messung wert, keine Vermutung.
+     */
+    const agc = $("agc").checked;
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: agc },
+    });
+
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    // Safari startet den Kontext gelegentlich angehalten.
+    if (ctx.state === "suspended") await ctx.resume();
+
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = WINDOW;
+    ctx.createMediaStreamSource(stream).connect(analyser);
+
+    const track = stream.getAudioTracks()[0];
+    btn.textContent = `läuft — ${Math.round(ctx.sampleRate)} Hz`;
+    $("cents").textContent = "summe einen Ton";
+    $("numbers").hidden = false;
+
+    loop(analyser, ctx.sampleRate, track);
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = "Mikrofon starten";
+    $("err").hidden = false;
+    $("err").textContent = `${e.name}: ${e.message}`;
+  }
+});
+
+function loop(analyser, sampleRate, track) {
+  const buf = new Float32Array(analyser.fftSize);
+  let peak = 0;
+  let treffer = 0;
+  let versuche = 0;
+  let zuletzt = null;
+  let zuletztGeprueft = 0;
+
+  function frame() {
+    analyser.getFloatTimeDomainData(buf);
+
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+    const rms = Math.sqrt(sum / buf.length);
+    if (rms > peak) peak = rms;
+
+    /*
+     * Der Balken ist logarithmisch. Linear war er unbrauchbar: ein gut
+     * brauchbares Signal von 0,01 haette 1 Prozent Breite gezeigt, was wie
+     * "nichts kommt an" aussieht, obwohl alles da ist.
+     */
+    const db = toDb(rms);
+    $("level").style.width = Math.max(0, Math.min(100, ((db + 60) / 60) * 100)) + "%";
+
+    /*
+     * Keine eigene Pegelschwelle mehr davor. Der Detektor hat seine eigene und
+     * ist gegen die Lautstaerke normiert - eine zweite, absolute Huerde davor
+     * hat hier nur dafuer gesorgt, dass er bei leisem Signal nie lief.
+     */
+    const jetzt = performance.now();
+    if (jetzt - zuletztGeprueft >= DETECT_EVERY_MS) {
+      zuletztGeprueft = jetzt;
+      versuche++;
+      const found = detectPitch(buf, sampleRate);
+      if (found) {
+        treffer++;
+        zuletzt = found;
+        const { midi, cents } = frequencyToMidi(found.hz);
+        $("note").textContent = midiToName(midi);
+        $("cents").textContent =
+          `${found.hz.toFixed(1)} Hz · ${cents >= 0 ? "+" : ""}${cents} Cent · Klarheit ${found.clarity.toFixed(2)}`;
+      }
+    }
+
+    const settings = track.getSettings ? track.getSettings() : {};
+    $("numbers").innerHTML = [
+      ["Pegel jetzt", `${rms.toFixed(5)}  (${db === -Infinity ? "−∞" : db.toFixed(1)} dB)`],
+      ["lautester bisher", `${peak.toFixed(5)}  (${toDb(peak).toFixed(1)} dB)`],
+      ["Erkennungen", `${treffer} von ${versuche}`],
+      ["zuletzt erkannt", zuletzt ? `${zuletzt.hz.toFixed(1)} Hz, Klarheit ${zuletzt.clarity.toFixed(2)}` : "noch nichts"],
+      ["Fenster", `${analyser.fftSize} Samples bei ${Math.round(sampleRate)} Hz`],
+      ["Pegelautomatik", settings.autoGainControl === undefined ? "unbekannt" : String(settings.autoGainControl)],
+    ].map(([k, v]) => `<div class="row"><span class="muted">${k}</span><span>${v}</span></div>`).join("");
+
+    requestAnimationFrame(frame);
+  }
+
+  frame();
+}
+</script>
+</body>
+</html>
