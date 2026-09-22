@@ -41,7 +41,8 @@ src/Home.tsx    The start screen. Reports which mode was tapped; knows
 - `core/musicxml.ts` — serialises them
 - `core/NoteMatcher.ts` — the engine: right note advances, wrong note stops
 - `core/NoteInputSource.ts` — **the port** every input implements
-- `core/playback.ts` — note values and tempo into seconds
+- `core/playback.ts` — note values, tempo and pedal into seconds
+- `core/pedal.ts` — pedal marks into spans; the pedal change is the trap
 - `core/NoteOutput.ts` — **the port** every sound output implements
 - `adapters/osmdScore.ts` — the only file allowed to know OSMD's object graph
 - `adapters/MidiInput.ts` — Web MIDI (desktop only; Safari has none)
@@ -107,6 +108,11 @@ with the sound and stays where it stopped, so listening to a passage leaves
 you ready to play the next one. Verified against the clock: the minuet's
 quarters come out at 0.476 s and its eighths at 0.238 s, which is 126 exactly.
 
+Where the score writes a damper pedal, it is honoured: the note goes on
+sounding until the foot comes up. Only the Chopin writes any — 108 spans, and
+with them it stops being a typing exercise. Measured against the score: its
+opening chord rings 1.552 s where the notation alone would give 1.034.
+
 The sound is recordings of a Yamaha C5, one every minor third, in
 `public/piano/` — see its `SOURCES.md` for the licence, which requires the
 attribution the settings panel carries. A synthesised tone came first and was
@@ -144,9 +150,15 @@ aim at and still leaves the eyes the work of finding it on the page.
   for, and there is no service worker to hold them offline. Practising away
   from a connection works once the browser has them cached; the first time
   does not.
-- **Dynamics and pedal are ignored** when playing back — everything sounds
-  equally loud and nothing rings on past its written length. Audible in the
-  Chopin and the Moonlight, which are the two pieces that live on it.
+- **Dynamics are ignored** when playing back — everything sounds equally loud,
+  whatever the score marks.
+- **Pedal only where it is written**, and six of the seven pieces write none.
+  The Moonlight is the loss: its whole character is the raised dampers, and
+  Beethoven said so — but as the words *senza sordini*, not as a pedal mark,
+  so there is nothing in the data to read. A rule of thumb exists (change the
+  pedal when the lowest sounding note changes) and would flatter that piece,
+  but it would be wrong in the Bach. Left out for the same reason as the minor
+  fingerings: a wrong pedal is worse than none.
 - **Minor fingerings**: absent on purpose. They do not simply follow the
   parallel or relative major, and a wrongly practised fingering is harder to
   unlearn than none.

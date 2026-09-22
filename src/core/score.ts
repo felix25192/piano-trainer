@@ -45,6 +45,17 @@ export interface ScoreStep {
   onset: number;
   /** Quarter notes per minute in force at this step. */
   bpm: number;
+  /**
+   * When the damper pedal comes up again, in the same whole notes as `onset`,
+   * or null when no pedal is down here.
+   *
+   * Only what the score actually writes. Six of the seven bundled pieces note
+   * none at all — including the Moonlight, whose whole character is the raised
+   * dampers, because Beethoven wrote it as words rather than as a pedal mark.
+   * Inventing one where none is written is a guess, and a wrong pedal sounds
+   * worse than no pedal.
+   */
+  pedalUntil: number | null;
 }
 
 export interface Score {

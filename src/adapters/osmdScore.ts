@@ -1,4 +1,5 @@
 import type { OpenSheetMusicDisplay } from "opensheetmusicdisplay";
+import { pedalEndAt, pedalSpans, type PedalMark } from "../core/pedal";
 import { FALLBACK_BPM } from "../core/playback";
 import type { ExpectedNote, Score, ScoreStep } from "../core/score";
 
@@ -46,6 +47,7 @@ export function extractScore(
   // two bars — and the sheet-wide default is not always filled in. The
   // Beethoven leaves it undefined while every one of its measures says 180.
   const measures = osmd.Sheet?.SourceMeasures ?? [];
+  const pedals = pedalSpans(pedalMarks(osmd));
 
   // Two layout reads for the whole walk; everything after this is arithmetic.
   const sheetWidth = host?.querySelector("svg")?.getBoundingClientRect().width ?? 0;
@@ -55,12 +57,23 @@ export function extractScore(
 
   while (!isAtEnd(cursor) && steps.length < MAX_STEPS) {
     const measure = currentMeasure(cursor);
+    const onset = currentOnset(cursor);
+    /*
+     * Pedal marks are timestamped in the printed score, the steps in the order
+     * they are played, and a repeat pulls the two apart. So the question "is
+     * the pedal down here" is asked in the score's own time, and only the
+     * answer — how much longer the dampers stay off — is carried back over.
+     */
+    const source = currentSource(cursor);
+    const lift = pedalEndAt(pedals, source);
+
     steps.push({
       index: steps.length,
       measure,
       notes: notesUnderCursor(cursor),
-      onset: currentOnset(cursor),
+      onset,
       bpm: tempoOf(measures[measure - 1]),
+      pedalUntil: lift === null ? null : onset + (lift - source),
     });
     anchors.push(sheetWidth > 0 ? cursorFraction(cursor, sheetWidth, cursorWidth) : 0);
     cursor.next();
@@ -132,6 +145,39 @@ function currentOnset(cursor: Cursor): number {
     iterator?: { CurrentEnrolledTimestamp?: { RealValue?: number } };
   }).iterator;
   return iterator?.CurrentEnrolledTimestamp?.RealValue ?? 0;
+}
+
+/** Where the cursor stands in the printed score, repeats not counted. */
+function currentSource(cursor: Cursor): number {
+  const iterator = (cursor as unknown as {
+    iterator?: { CurrentSourceTimestamp?: { RealValue?: number } };
+  }).iterator;
+  return iterator?.CurrentSourceTimestamp?.RealValue ?? 0;
+}
+
+/**
+ * Every moment at which the damper pedal goes down or comes up.
+ *
+ * Collected raw and handed straight to `core/pedal.ts`, which does the one
+ * thing here that can be got wrong — pairing them, past the pedal changes
+ * where both marks share a timestamp. This function only walks the object
+ * graph, which is all an adapter should do.
+ */
+function pedalMarks(osmd: OpenSheetMusicDisplay): PedalMark[] {
+  const marks: PedalMark[] = [];
+
+  for (const measure of osmd.Sheet?.SourceMeasures ?? []) {
+    for (const perStaff of measure.StaffLinkedExpressions ?? []) {
+      for (const expression of perStaff ?? []) {
+        const at = expression?.AbsoluteTimestamp?.RealValue;
+        if (typeof at !== "number" || !Number.isFinite(at)) continue;
+        if (expression.PedalStart) marks.push({ at, down: true });
+        if (expression.PedalEnd) marks.push({ at, down: false });
+      }
+    }
+  }
+
+  return marks;
 }
 
 /** Quarter notes per minute in a measure, or a practice tempo if it names none. */

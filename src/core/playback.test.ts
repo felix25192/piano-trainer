@@ -13,12 +13,18 @@ function held(midi: number, duration: number): ExpectedNote {
 }
 
 function scoreOf(
-  ...steps: Array<{ onset: number; bpm: number; notes: ExpectedNote[] }>
+  ...steps: Array<{
+    onset: number;
+    bpm: number;
+    notes: ExpectedNote[];
+    /** Left out means the dampers are on the strings, as in most of the set. */
+    pedalUntil?: number;
+  }>
 ): Score {
   return {
     title: "test",
     steps: steps.map(
-      (s, index): ScoreStep => ({ index, measure: 1, ...s }),
+      (s, index): ScoreStep => ({ index, measure: 1, pedalUntil: null, ...s }),
     ),
   };
 }
@@ -201,5 +207,68 @@ describe("following the music with the cursor", () => {
 
   it("has nothing to say about an empty schedule", () => {
     expect(stepAtTime({ notes: [], steps: [], duration: 0 }, 1)).toBeNull();
+  });
+});
+
+describe("under the pedal", () => {
+  /*
+   * A quarter note struck under a pedal that is held for a whole bar goes on
+   * sounding to the end of the bar. Without this the Chopin nocturne, which
+   * pedals almost continuously, is a succession of clipped notes.
+   */
+  it("holds a note until the foot comes up", () => {
+    const score = scoreOf(
+      { onset: 0, bpm: 60, notes: [note(60, 0.25)], pedalUntil: 1 },
+      { onset: 0.25, bpm: 60, notes: [note(64, 0.25)], pedalUntil: 1 },
+      { onset: 1, bpm: 60, notes: [note(67, 0.25)] },
+    );
+
+    const { notes } = buildSchedule(score, 0);
+
+    // Four quarters at 60 from the first note, three from the second.
+    expect(notes[0].duration).toBeCloseTo(4);
+    expect(notes[1].duration).toBeCloseTo(3);
+    // The third is struck after the lift and keeps its written length.
+    expect(notes[2].duration).toBeCloseTo(1);
+  });
+
+  it("leaves a note that outlasts the pedal alone", () => {
+    const score = scoreOf(
+      { onset: 0, bpm: 60, notes: [note(60, 1)], pedalUntil: 0.25 },
+      { onset: 1, bpm: 60, notes: [note(64, 0.25)] },
+    );
+
+    // A whole note is four seconds at 60; the pedal lifts after one.
+    expect(buildSchedule(score, 0).notes[0].duration).toBeCloseTo(4);
+  });
+
+  it("damps at a pedal change rather than at the end of the next one", () => {
+    // Two spans meeting at 0.5: the note struck at 0 belongs to the first.
+    const score = scoreOf(
+      { onset: 0, bpm: 60, notes: [note(60, 0.25)], pedalUntil: 0.5 },
+      { onset: 0.5, bpm: 60, notes: [note(64, 0.25)], pedalUntil: 1 },
+      { onset: 1, bpm: 60, notes: [note(67, 0.25)] },
+    );
+
+    const { notes } = buildSchedule(score, 0);
+
+    expect(notes[0].duration).toBeCloseTo(2);
+    expect(notes[1].duration).toBeCloseTo(2);
+  });
+
+  /*
+   * A pedal the score never lifts arrives as infinity. Left alone it would
+   * make the note, and with it the whole playback, endless.
+   */
+  it("stops a pedal that is never lifted at the end of the piece", () => {
+    const score = scoreOf(
+      { onset: 0, bpm: 60, notes: [note(60, 0.25)], pedalUntil: Infinity },
+      { onset: 0.5, bpm: 60, notes: [note(64, 0.25)], pedalUntil: Infinity },
+    );
+
+    const schedule = buildSchedule(score, 0);
+
+    expect(Number.isFinite(schedule.duration)).toBe(true);
+    expect(schedule.notes[0].duration).toBeCloseTo(2);
   });
 });

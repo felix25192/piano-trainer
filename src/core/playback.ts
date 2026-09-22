@@ -84,6 +84,10 @@ export function buildSchedule(
   const scheduled: ScheduledStep[] = [];
   let duration = 0;
 
+  // A pedal the score never lifts would otherwise run to infinity, and with it
+  // the length of the whole playback.
+  const lastOnset = steps[steps.length - 1].onset;
+
   for (let i = first; i < steps.length; i++) {
     const step = steps[i];
     const start = (elapsed[i] - origin) / factor;
@@ -96,8 +100,26 @@ export function buildSchedule(
 
       // Measured to the end of the note rather than from its length, so a
       // tempo change underneath a held note is taken into account.
-      const end = secondsAt(score, elapsed, step.onset + note.duration);
-      const seconds = Math.max((end - elapsed[i]) / factor, MIN_SECONDS);
+      const written = secondsAt(score, elapsed, step.onset + note.duration);
+
+      /*
+       * Under the pedal the dampers are off the strings, so the note goes on
+       * sounding past its written length until the foot comes up — which is
+       * the whole difference between a Chopin nocturne and a typing exercise.
+       *
+       * Only notes struck while the pedal is already down are caught. One
+       * struck a moment earlier would be caught too on a real piano; the score
+       * model has no place to say so, and the case is rare enough to leave.
+       */
+      const lift =
+        step.pedalUntil === null
+          ? written
+          : secondsAt(score, elapsed, Math.min(step.pedalUntil, lastOnset));
+
+      const seconds = Math.max(
+        (Math.max(written, lift) - elapsed[i]) / factor,
+        MIN_SECONDS,
+      );
 
       notes.push({ midi: note.midi, start, duration: seconds });
       duration = Math.max(duration, start + seconds);

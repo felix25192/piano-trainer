@@ -23,7 +23,7 @@ Veroeffentlicht unter <https://felix25192.github.io/piano-trainer/>, bei
 jedem Push auf `main` automatisch aktualisiert. 160 Tests.
 
 Eine Stelle laesst sich ab der Markierung vorspielen, im Tempo der Noten,
-mit Aufnahmen eines echten Fluegels.
+mit Aufnahmen eines echten Fluegels und dem Pedal, das in den Noten steht.
 
 **Als Naechstes.** Spike A, sobald iPad und Klavier zusammen verfuegbar sind.
 Danach MicInput, der dickste verbleibende Brocken. Die offenen Punkte im
@@ -757,3 +757,68 @@ Das erste Vorspielen einer Sitzung braucht Netz. Die Aufnahmen liegen in der
 App, aber ohne Service Worker haelt sie nichts offline vor; einmal geladen
 reicht der Browsercache. Am Klavier ohne WLAN muss man also einmal vorher
 gespielt haben.
+
+## Das Pedal, soweit es notiert ist (22.09.2026)
+
+Der Klang stimmte, aber jede Note wurde exakt am notierten Wert gedaempft -
+bei Chopin klang das nach Schreibmaschine statt nach Nocturne.
+
+Zuerst nachgesehen, was ueberhaupt in den Dateien steht, und der Befund hat
+den Umfang bestimmt: **nur die Chopin-Nocturne hat Pedal notiert**, 108
+Spannen. Die anderen sechs haben keins.
+
+### Die Falle heisst Pedalwechsel
+
+Beim Wechsel geht der Fuss hoch und sofort wieder runter, damit die Harmonie
+klart ohne dass die Linie abreisst. Beide Zeichen tragen dann **denselben
+Zeitstempel**. Sortiert man nur nach Zeit, landet das neue "runter" vor dem
+alten "hoch", und es entstehen Spannen der Laenge null, waehrend die echten
+unpaarig liegenbleiben. Genau das ist mir im Probelauf passiert: 71 Spannen
+und 74 unpaarige Zeichen statt sauberer 108.
+
+Gleicher Zeitstempel heisst also: erst hoch, dann runter. Danach stimmt es
+exakt - 108 Spannen, null unpaarig, Laengen von einer Viertel bis zu zwei
+ganzen Noten.
+
+Weil genau das die Stelle ist, an der man sich irrt, liegt sie in
+`core/pedal.ts` und nicht im Adapter. Der Adapter sammelt nur die rohen
+Zeichen ein, das Paaren ist rein und hat Tests - unter anderem einen, der den
+Fehler von oben festhaelt.
+
+### Notiert wird im gedruckten Takt, gespielt in der Reihenfolge des Spielens
+
+Pedalzeichen tragen Zeitstempel der Partitur, die Schritte laufen in der
+Reihenfolge, in der gespielt wird - eine Wiederholung zieht beides
+auseinander. Also wird die Frage "ist hier das Pedal unten" in der Zeit der
+Partitur gestellt und nur die Antwort herueber gerechnet: wie lange die
+Daempfer noch oben bleiben. Die Nocturne hat zwar keine Wiederholungen, aber
+darauf soll sich nichts verlassen.
+
+### Nachgemessen
+
+Chopin, erste vier Toene unter der Pedalspanne von 0 bis 0,375:
+
+    e'   2,433 s gemessen, 2,433 gerechnet
+    gis' 2,383                2,384
+    cis" 2,325                2,325
+    Cis  2,853                2,853
+
+Sie klingen 1,552 s statt der notierten 1,034 - genau bis zum Lueften. Der
+Schritt bei 0,375 liegt zwischen zwei Spannen und behaelt seine Schreibweise,
+auch das gemessen.
+
+Gegenprobe am Menuett, das kein Pedal notiert: unveraendert, 1,239 s fuer die
+Viertel und 1,956 fuer die halben Akkordtoene - beides auf die Millisekunde
+wie vorher.
+
+### Was bewusst fehlt
+
+Fuer die sechs Stuecke ohne Pedalzeichen muesste man es erfinden. Am meisten
+schmerzt die Mondscheinsonate, deren ganzer Charakter an den angehobenen
+Daempfern haengt - Beethoven schreibt es auch hin, aber als Worte *senza
+sordini* und nicht als Pedalzeichen, es steht also nicht in den Daten.
+
+Eine Faustregel gaebe es (Pedal wechseln, sobald sich der tiefste klingende
+Ton aendert), und beim Mondschein kaeme sie dem nah, was ein Pianist tut. Bei
+Bach waere sie schlicht falsch. Dieselbe Entscheidung wie bei den
+Moll-Fingersaetzen: lieber keins als ein falsches.

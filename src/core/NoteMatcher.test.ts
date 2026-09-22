@@ -17,6 +17,7 @@ function step(index: number, measure: number, ...midi: number[]): ScoreStep {
     notes: midi.map((m) => ({ midi: m, staff: 1, duration: 0.25, heldOver: false })),
     onset: index * 0.25,
     bpm: 60,
+    pedalUntil: null,
   };
 }
 
@@ -259,6 +260,7 @@ describe("the opening of the Moonlight Sonata", () => {
       measure: 1,
       onset: 0,
       bpm: 44,
+      pedalUntil: null,
       notes: [
         // The octave is a whole note; the triplet eighths above it are a
         // twelfth of one each.
@@ -272,6 +274,7 @@ describe("the opening of the Moonlight Sonata", () => {
       measure: 1,
       onset: 1 / 12,
       bpm: 44,
+      pedalUntil: null,
       notes: [{ midi: 61, staff: 1, duration: 1 / 12, heldOver: false }],
     },
     {
@@ -279,6 +282,7 @@ describe("the opening of the Moonlight Sonata", () => {
       measure: 1,
       onset: 2 / 12,
       bpm: 44,
+      pedalUntil: null,
       notes: [{ midi: 64, staff: 1, duration: 1 / 12, heldOver: false }],
     },
   );
