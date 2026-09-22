@@ -436,3 +436,41 @@ setzt und merkt in einem, und alle Auswahlpfade laufen darueber.
   viele Partituren tragen einen.
 - Speicherplatz wird nicht begrenzt. Bei Dutzenden Stuecken waere eine
   Anzeige des Verbrauchs sinnvoll.
+
+## Ein gestuftes Uebungsset (22.09.2026)
+
+Sieben mitgelieferte Stuecke, leichtestes zuerst, jedes mit einem Hinweis in
+der Liste. Ausgewaehlt **zum Lesen, nicht zum Spielen** - entscheidend ist
+Abwechslung pro Takt und vor allem Unbekanntheit. Ein Stueck, das man im Ohr
+hat, laesst das Gedaechtnis arbeiten, waehrend die Augen nichts lernen. Genau
+deshalb kann jemand die Mondscheinsonate auswendig und trotzdem keine Noten
+lesen.
+
+Jede Datei wurde vor der Aufnahme gegen die Partitur geprueft: Vorzeichen,
+Schluessel, Systemzahl, Taktart, Taktzahl. Zwei Befunde dabei:
+
+### Die Chopin-Datei war an der Quelle falsch benannt
+
+Sie heisst dort `Nocturne_No._20_in_C_Minor.mxl`. Die Tonart traegt aber vier
+Kreuze und die ersten Toene sind e, gis, cis - das ist die **Nocturne
+cis-Moll op. posth.**, c-Moll waere drei Be. Hier unter richtigem Namen
+abgelegt.
+
+### Das Bach-Praeludium ist einen Takt zu kurz
+
+BWV 846 hat im Autograph 35 Takte. Ausgaben mit dem sogenannten
+Schwencke-Takt - einem Takt, den ein Herausgeber des 19. Jahrhunderts
+zwischen 22 und 23 einfuegte und der nachweislich nicht von Bach stammt -
+haben 36. Diese Datei hat 34, folgt also keiner Variante, sondern es fehlt
+etwas.
+
+Welcher Takt, ist nicht ermittelt. Fuers Lesetraining unerheblich, zum
+Einstudieren des Stuecks nicht.
+
+Beide Befunde stehen in `public/scores/SOURCES.md`.
+
+### Geprueft
+
+Alle sieben im Browser geladen, keine Fehler, jedes rendert mit sauber
+eingepasster Hoehe. Breite reicht von 7.500 Pixeln (Bach-Menuett) bis 31.850
+(Mozart KV 545).

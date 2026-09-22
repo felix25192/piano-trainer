@@ -31,24 +31,66 @@ import "./App.css";
  * so the settings list can offer a delete for one and not the other.
  */
 type Selection =
-  | { kind: "bundled"; key: string; label: string; url: string }
-  | { kind: "library"; key: string; label: string; id: string };
+  | { kind: "bundled"; key: string; label: string; url: string; hint?: string }
+  | { kind: "library"; key: string; label: string; id: string; hint?: string };
 
-// BASE_URL is "/" during development and "/piano-trainer/" in the build, so
-// every bundled asset has to be addressed through it rather than from the root.
+function bundled(key: string, label: string, file: string, hint: string): Selection {
+  // BASE_URL is "/" during development and "/piano-trainer/" in the build, so
+  // bundled assets have to be addressed through it rather than from the root.
+  return { kind: "bundled", key, label, hint, url: `${import.meta.env.BASE_URL}scores/${file}` };
+}
+
+/**
+ * A graded set, easiest first.
+ *
+ * Picked for reading rather than for playing: what matters is variety per bar
+ * and, above all, being unfamiliar. A piece you know by ear lets your memory
+ * do the work while your eyes learn nothing — which is exactly why someone can
+ * play the Moonlight from memory and still not read.
+ */
 const BUNDLED: Selection[] = [
-  {
-    kind: "bundled",
-    key: "clementi",
-    label: "Clementi — Sonatina Op. 36 No. 1",
-    url: `${import.meta.env.BASE_URL}scores/clementi-sonatina-op36-no1.xml`,
-  },
-  {
-    kind: "bundled",
-    key: "moonlight",
-    label: "Beethoven — Mondscheinsonate, 1. Satz",
-    url: `${import.meta.env.BASE_URL}scores/moonlight-sonata-mvt1.mxl`,
-  },
+  bundled(
+    "bach-minuet",
+    "Bach — Menuett G-Dur BWV Anh. 114",
+    "bach-minuet-g-bwv-anh114.mxl",
+    "leicht · klare Zweistimmigkeit, 32 Takte",
+  ),
+  bundled(
+    "danse-villageoise",
+    "Beethoven — Danse villageoise",
+    "beethoven-danse-villageoise.mxl",
+    "leicht · kennst du vermutlich nicht — darum ideal",
+  ),
+  bundled(
+    "bach-prelude",
+    "Bach — Präludium C-Dur BWV 846",
+    "bach-prelude-c-bwv846.mxl",
+    "leicht · gleiche Figur, ständig neue Harmonien",
+  ),
+  bundled(
+    "clementi",
+    "Clementi — Sonatine op. 36 Nr. 1",
+    "clementi-sonatina-op36-no1.xml",
+    "mittel · seit 200 Jahren das Übungsstück dafür",
+  ),
+  bundled(
+    "mozart-k545",
+    "Mozart — Sonate KV 545, 1. Satz",
+    "mozart-sonata-k545-mvt1.mxl",
+    "mittel · die „Sonata facile“",
+  ),
+  bundled(
+    "chopin-nocturne",
+    "Chopin — Nocturne cis-Moll op. posth.",
+    "chopin-nocturne-cs-minor-posth.mxl",
+    "anspruchsvoll · vier Kreuze, freie Rhythmen",
+  ),
+  bundled(
+    "moonlight",
+    "Beethoven — Mondscheinsonate, 1. Satz",
+    "moonlight-sonata-mvt1.mxl",
+    "anspruchsvoll · Triolen, vier Kreuze",
+  ),
 ];
 
 const ZOOM_MIN = 0.4;
@@ -521,7 +563,10 @@ export default function App() {
                           setSettingsOpen(false);
                         }}
                       >
-                        <span className="name">{piece.label}</span>
+                        <span className="text">
+                          <span className="name">{piece.label}</span>
+                          {piece.hint && <span className="sub">{piece.hint}</span>}
+                        </span>
                         {entry && <span className="meta">{formatSize(entry.size)}</span>}
                       </button>
                       {entry && (

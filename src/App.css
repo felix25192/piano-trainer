@@ -240,11 +240,30 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
 
 .pieces .pick:active { filter: brightness(1.4); }
 
+.pieces .pick { padding-top: 8px; padding-bottom: 8px; }
+
+.pieces .text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
 .pieces .name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.pieces .sub {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pieces .current .sub { color: #9fb4e8; }
 
 .pieces .meta {
   flex: none;
