@@ -176,6 +176,14 @@ aim at and still leaves the eyes the work of finding it on the page.
   (`ExpectedNote.heldOver`); the matcher does not, because changing what the
   app demands of the player is a decision of its own, not a side effect of
   adding sound.
+- **A home-screen app goes black after a deploy.** Verified: each build emits a
+  new hashed bundle and GitHub Pages deletes the old one, so a standalone web
+  app holding a cached `index.html` asks for an asset that is now a 404, React
+  never mounts, and what is left on screen is the background colour. Pulling
+  down to refresh inside the app fixes it, as does removing and re-adding the
+  icon. A service worker serving the HTML network-first would fix it properly;
+  there is none yet, and that is also why the first playback of a session needs
+  the network.
 - **Playback on iOS**: Web Audio is silenced by the ring switch, and the
   behaviour from the home screen is untested. Same class of unknown as Spike A.
 - **The first playback of a session needs the network.** The recordings are

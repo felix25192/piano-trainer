@@ -19,6 +19,15 @@ interface Mode {
   title: string;
   hint: string;
   icon: ReactNode;
+  /**
+   * A page to open instead of entering a mode.
+   *
+   * For the one that is not built yet: the card would otherwise be a dead
+   * end, and the device test it leads to is impossible to find if it lives
+   * only in a link someone has to be told. A card you can see beats an
+   * address you have to be sent.
+   */
+  href?: string;
 }
 
 /*
@@ -70,8 +79,11 @@ const MODES: Mode[] = [
   {
     id: null,
     title: "Mit dem Mikrofon",
-    hint: "Üben ohne Kabel: Das Mikrofon hört mit und prüft, was gespielt wurde.",
+    hint:
+      "Üben ohne Kabel — noch nicht gebaut. Hier geht es zum Gerätetest, der prüft, ob dieses Gerät überhaupt mithören kann.",
     icon: micIcon,
+    // BASE_URL is "/" in development and "/piano-trainer/" in the build.
+    href: `${import.meta.env.BASE_URL}mic-test.html`,
   },
 ];
 
@@ -109,21 +121,36 @@ export default function Home({ resume, onResume, onPick }: HomeProps) {
       )}
 
       <div className="modes">
-        {MODES.map((mode) => (
-          <button
-            key={mode.title}
-            className={"mode" + (mode.id ? "" : " soon")}
-            disabled={mode.id === null}
-            onClick={() => {
-              if (mode.id) onPick(mode.id);
-            }}
-          >
-            <span className="glyph">{mode.icon}</span>
-            <span className="title">{mode.title}</span>
-            <span className="hint">{mode.hint}</span>
-            {mode.id === null && <span className="badge">in Arbeit</span>}
-          </button>
-        ))}
+        {MODES.map((mode) => {
+          const inside = (
+            <>
+              <span className="glyph">{mode.icon}</span>
+              <span className="title">{mode.title}</span>
+              <span className="hint">{mode.hint}</span>
+              {mode.href && (
+                <span className="badge">Gerätetest öffnen →</span>
+              )}
+            </>
+          );
+
+          // A real link, not a button that navigates: it can be opened in
+          // its own tab, and it survives being added to a home screen.
+          return mode.href ? (
+            <a key={mode.title} className="mode aside" href={mode.href}>
+              {inside}
+            </a>
+          ) : (
+            <button
+              key={mode.title}
+              className="mode"
+              onClick={() => {
+                if (mode.id) onPick(mode.id);
+              }}
+            >
+              {inside}
+            </button>
+          );
+        })}
       </div>
 
       <p className="colophon">

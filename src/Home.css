@@ -166,13 +166,20 @@
   line-height: 1.45;
 }
 
-/* Listed so the plan is visible, but there is nothing behind it yet. */
-.mode.soon {
-  cursor: default;
-  opacity: 0.55;
+/*
+ * The mode that is not built yet. Quieter than the two that are, but not
+ * greyed out to the point of looking broken — it leads somewhere, and a card
+ * that leads somewhere has to look like it does.
+ */
+.mode.aside {
+  text-decoration: none;
+  background: transparent;
+  border-style: dashed;
 }
 
-.mode.soon .glyph { color: var(--muted); }
+.mode.aside .glyph { color: var(--muted); }
+.mode.aside .title { color: var(--muted); }
+.mode.aside:active { border-style: solid; }
 
 .mode .badge {
   margin-top: auto;
