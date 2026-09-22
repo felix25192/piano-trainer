@@ -1,0 +1,217 @@
+/*
+ * The home screen. Colours and the touch target come from App.css, so this
+ * file only describes the layout of the cards.
+ */
+
+.home {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 30px 20px 34px;
+  /* A quiet glow behind the title, so the screen has a top. */
+  background: radial-gradient(130% 70% at 50% -12%, #1e2740 0%, transparent 62%);
+}
+
+.home > * {
+  width: min(100%, 640px);
+  flex: none;
+}
+
+/* ---------- title ---------- */
+
+/* The auto margins here and on the colophon centre the screen vertically when
+   there is room to spare, without clipping the top when there is not. */
+.hello {
+  margin-top: auto;
+  text-align: center;
+}
+
+.hello h1 {
+  margin: 0;
+  font: 600 30px/1.15 system-ui;
+  letter-spacing: -0.02em;
+}
+
+.hello p {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/*
+ * Five stave lines under the title, faded out at both ends.
+ *
+ * The repeating gradient draws a hairline every 5px, so five lines need
+ * exactly 21px of height — anything more starts a sixth.
+ */
+.staff {
+  height: 21px;
+  margin-top: 20px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--line) 0 1px,
+    transparent 1px 5px
+  );
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 28%, #000 72%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 28%, #000 72%, transparent);
+}
+
+/* ---------- back into the last piece ---------- */
+
+.resume {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 70px;
+  padding: 12px 18px;
+  text-align: left;
+  background: linear-gradient(180deg, #24304d, #1d2639);
+  border: 1px solid #3a4f86;
+  border-radius: 16px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.resume:active { filter: brightness(1.25); }
+
+.resume .text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.resume .eyebrow {
+  color: #9fb4e8;
+  font: 600 11px system-ui;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.resume .name {
+  font: 600 16px system-ui;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resume .arrow {
+  flex: none;
+  color: var(--accent);
+  font-size: 20px;
+}
+
+/* ---------- the modes ---------- */
+
+/* Side by side where there is room, stacked where there is not. */
+.modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.mode {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 158px;
+  padding: 18px;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.mode:active {
+  border-color: var(--accent);
+  background: var(--raised);
+}
+
+.mode .glyph {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #222a3c;
+  color: var(--accent);
+}
+
+.mode .glyph svg {
+  width: 23px;
+  height: 23px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Note heads are solid, everything else is drawn with the stroke. */
+.mode .glyph svg .filled { fill: currentColor; stroke: none; }
+
+.mode .title { font: 600 16px system-ui; }
+
+.mode .hint {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* Listed so the plan is visible, but there is nothing behind it yet. */
+.mode.soon {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.mode.soon .glyph { color: var(--muted); }
+
+.mode .badge {
+  margin-top: auto;
+  padding: 2px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font: 600 11px system-ui;
+}
+
+.colophon {
+  margin: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* ---------- landscape phone: every pixel of height counts ---------- */
+
+@media (max-height: 460px) {
+  .home {
+    gap: 12px;
+    padding: 12px 16px 16px;
+  }
+
+  .hello h1 { font-size: 22px; }
+  .hello p { margin-top: 6px; font-size: 13px; }
+  .staff { display: none; }
+
+  .resume { min-height: 58px; }
+
+  .modes { grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); }
+
+  .mode {
+    min-height: 0;
+    gap: 8px;
+    padding: 13px 14px;
+  }
+
+  .mode .glyph { width: 34px; height: 34px; border-radius: 10px; }
+  .mode .glyph svg { width: 19px; height: 19px; }
+}

@@ -168,9 +168,24 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
   border-radius: 12px;
   margin: 0 8px;
   overscroll-behavior-x: contain;
+  display: flex;
+  align-items: safe center;
 }
 
-.scroller > div { height: 100%; }
+/*
+ * The engraving sits in the middle of the page rather than against its top,
+ * because the automatic fit stops at ZOOM_FIT_MAX and from there on leaves
+ * height over.
+ *
+ * What is centred is OSMD's own container, not the SVG inside it: the cursor
+ * is an absolutely positioned element measured against that container, so
+ * moving the two together is the only way it stays on the notes.
+ *
+ * `safe` pins it back to the top edge as soon as the engraving is taller than
+ * the viewport -- with plain centring it would then be cut off at both ends at
+ * once, and overflow-y is hidden, so nothing could bring the top back.
+ */
+.scroller > div { flex: none; }
 
 /**
  * The highlight glides rather than jumping, which makes it much easier to

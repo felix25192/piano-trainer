@@ -9,7 +9,9 @@ Stand: 22.09.2026
 
 ## Wo wir stehen
 
-**Fertig und im Einsatz.** Noten laufen als eine horizontale Zeile durch,
+**Fertig und im Einsatz.** Die App oeffnet auf einer Startseite, die den
+Modus waehlen laesst und das zuletzt geoeffnete Stueck zum Weitermachen
+anbietet. Noten laufen als eine horizontale Zeile durch,
 beide Schluessel, richtige Vorzeichen, Groesse passt sich der Bildschirmhoehe
 selbst an. Antippen setzt die Spielposition. Stueck und Takt sind aus der
 Kopfzeile waehlbar. Eigene MusicXML-Dateien lassen sich laden und bleiben
@@ -543,3 +545,50 @@ gis-Moll, zwei Oktaven, Gegenbewegung: fuenf Kreuze in beiden Systemen,
 beide Haende auf demselben Startton, und an der erhoehten Septime je ein
 **Doppelkreuz** pro Hand. Ein Generator, der in MIDI-Nummern rechnet,
 schriebe dort ein schlichtes G hin.
+
+## Startseite, und ein Deckel fuer die automatische Groesse (22.09.2026)
+
+Die App oeffnete bisher mitten im Stueck. Das war richtig, solange es nur eine
+Sache zu tun gab. Mit den Uebungen als zweitem Modus ist es das nicht mehr:
+welche Moeglichkeiten es gibt, stand nur in der Stueckliste, und dort auch
+erst ganz unten.
+
+Jetzt liegt eine Startseite davor, eine Karte je Modus. Sie fuehrt nicht auf
+eine leere Ansicht, sondern in die Noten mit dem passenden Panel bereits
+offen - den Modus waehlen und darin waehlen ist eine Entscheidung, keine zwei.
+Dahinter steht das Stueck von letztem Mal, damit das Schliessen des Panels
+nichts Leeres hinterlaesst.
+
+Das Mikrofon steht als dritte Karte schon da, ausgegraut und mit "in Arbeit"
+beschriftet. Es ist der naechste geplante Modus, und zwei Karten allein sehen
+nicht nach einem Raster aus, das noch waechst. Eine Zeile in `MODES` entfernt
+sie wieder.
+
+### Der Preis: ein Fingertipp mehr
+
+Bisher landete ein Neuladen direkt im letzten Stueck - ausdruecklich so
+gebaut, damit Hinsetzen und Weiterspielen nichts kostet. Das ist jetzt eine
+Karte ganz oben statt automatisch. Bewusst so entschieden: die Wahl des Modus
+ueberhaupt sichtbar zu machen ist den Tipp wert.
+
+Die Karte haelt, was sie verspricht. Der Weg zur Startseite raeumt OSMD ab und
+damit den NoteMatcher; ohne Gegenmassnahme laege "Weiter ueben" bei Takt eins.
+Der Schrittindex wird deshalb beim Verlassen festgehalten und nach dem
+erneuten Parsen wieder angefahren, aber nur beim selben Stueck. Ueber einen
+Reload hinweg gilt das nicht - dort faengt es an wie bisher.
+
+### Die automatische Groesse hoert bei 2.0 auf
+
+Die Anpassung blies ein System bisher auf die volle Fensterhoehe auf, auf dem
+grossen Schirm bis 2.4. Das ist zu viel: ein einzelner Takt ueber den ganzen
+Bildschirm liest sich schlechter als drei, weil Blattspiel davon lebt, zu
+sehen was kommt. Also ein Deckel, `ZOOM_FIT_MAX = 2`. Von Hand geht es
+weiterhin bis 4 - gedeckelt ist nur, was die App von selbst tut.
+
+Damit bleibt Hoehe uebrig, und das Notenbild steht seitdem mittig statt oben.
+Zentriert wird der OSMD-Container, nicht das SVG darin: der Cursor ist absolut
+in diesem Container positioniert und liefe sonst neben den Noten her.
+`align-items: safe center` schiebt alles an den oberen Rand zurueck, sobald
+das Notenbild doch hoeher ist als das Fenster - bei mittiger Ausrichtung waere
+es dann oben und unten zugleich abgeschnitten, und `overflow-y` steht auf
+`hidden`, koennte den Kopf also nicht zurueckholen.

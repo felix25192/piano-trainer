@@ -15,6 +15,7 @@ import { scoreFileAccept } from "./core/scoreFile";
 import { buildExercise, keyName, type ExerciseOptions } from "./core/exercises";
 import { exerciseToMusicXml } from "./core/musicxml";
 import { keyOf, type Key, type Letter } from "./core/theory";
+import Home, { type ModeId } from "./Home";
 import "./App.css";
 
 /**
@@ -27,6 +28,17 @@ import "./App.css";
  * instrument until MidiInput is wired up; they call the same `play()` a real
  * adapter will, which is what the NoteInputSource port buys us.
  */
+
+/**
+ * Home screen or score — the app only ever shows one of the two.
+ *
+ * Nothing about the score survives a detour to the home screen: OSMD is torn
+ * down with it and the piece is parsed again on the way back. That costs a
+ * moment, and it keeps the teardown honest: the alternative is a hidden
+ * renderer kept alive, fitting itself to a container that is no longer on
+ * screen.
+ */
+type View = "home" | "practice";
 
 /**
  * A piece comes either with the app or from the user's own files. Both end up
@@ -137,6 +149,18 @@ const ZOOM_MAX = 4;
 const ZOOM_STEP = 0.1;
 
 /**
+ * As large as the automatic fit is allowed to go on its own.
+ *
+ * Without a ceiling the fit blows one system up to the full height of whatever
+ * it is given, and on a tall window that is far past comfortable — a single
+ * bar filling the screen reads worse than three of them, because sight-reading
+ * lives on seeing what comes next. The value is chosen by eye, not measured;
+ * past it the score stops growing and leaves the rest of the page white.
+ * Setting the size by hand still reaches ZOOM_MAX.
+ */
+const ZOOM_FIT_MAX = 2;
+
+/**
  * The keys offered, in circle-of-fifths order — C, then one sharp more each
  * step, wrapping round through the flats back to F.
  *
@@ -173,8 +197,19 @@ export default function App() {
   const anchorsRef = useRef<number[]>([]);
   /** Start of the current pointer gesture, to tell a tap from a scroll swipe. */
   const pressRef = useRef<{ x: number; y: number } | null>(null);
+  /**
+   * Where practice stood when the home screen was opened.
+   *
+   * Going home throws the matcher away with the renderer, so the step is kept
+   * here and seeked back to once the same piece has been parsed again. Without
+   * it a card that says "weiter üben" would drop you at bar one.
+   */
+  const resumeStepRef = useRef<{ key: string; step: number } | null>(null);
 
+  const [view, setView] = useState<View>("home");
   const [selected, setSelected] = useState<Selection>(BUNDLED[0]);
+  /** Whether there is a piece from last time to offer on the home screen. */
+  const [resumable, setResumable] = useState(false);
   const [library, setLibrary] = useState<LibraryEntry[]>([]);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1.2);
@@ -208,13 +243,13 @@ export default function App() {
   // does not mean hunting for it again.
   useEffect(() => {
     if (!isLibrarySupported()) {
-      restoreLastPiece(BUNDLED, setSelected);
+      setResumable(restoreLastPiece(BUNDLED, setSelected));
       return;
     }
     listScores()
       .then((entries) => {
         setLibrary(entries);
-        restoreLastPiece(
+        const restored = restoreLastPiece(
           [
             ...BUNDLED,
             ...entries.map(
@@ -228,6 +263,7 @@ export default function App() {
           ],
           setSelected,
         );
+        setResumable(restored);
       })
       .catch((e: unknown) => setLibraryError(describeError(e)));
   }, []);
@@ -244,6 +280,26 @@ export default function App() {
   const choosePiece = useCallback((piece: Selection) => {
     setSelected(piece);
     rememberLastPiece(piece.key);
+  }, []);
+
+  /** Leaves the score, keeping the bar it stood on for the way back. */
+  const goHome = useCallback(() => {
+    const step = matcherRef.current?.progress.stepIndex;
+    resumeStepRef.current = step === undefined ? null : { key: selected.key, step };
+    setSheet(null);
+    setResumable(true);
+    setView("home");
+  }, [selected.key]);
+
+  /**
+   * A card on the home screen opens the score with the matching panel already
+   * up, because picking the mode and picking within it is one decision. The
+   * piece behind is the one from last time, so closing the panel without
+   * choosing still leaves something to play.
+   */
+  const openMode = useCallback((mode: ModeId) => {
+    setSheet(mode === "pieces" ? "pieces" : "exercise");
+    setView("practice");
   }, []);
 
   /** Puts OSMD's cursor back where the engine stands after a re-render. */
@@ -290,7 +346,7 @@ export default function App() {
         const factor = available / rendered;
         if (Math.abs(factor - 1) < 0.04) break;
 
-        const next = clamp(osmd.zoom * factor, ZOOM_MIN, ZOOM_MAX);
+        const next = clamp(osmd.zoom * factor, ZOOM_MIN, ZOOM_FIT_MAX);
         if (Math.abs(next - osmd.zoom) < 0.02) break;
 
         osmd.zoom = next;
@@ -304,8 +360,11 @@ export default function App() {
     }
   }, [restoreCursor]);
 
-  // Load and render whenever the piece changes.
+  // Load and render whenever the piece changes — and again after a detour to
+  // the home screen, which unmounts the host the renderer draws into.
   useEffect(() => {
+    if (view !== "practice") return;
+
     let cancelled = false;
     const host = hostRef.current;
     if (!host) return;
@@ -358,7 +417,14 @@ export default function App() {
 
         const { score: extracted, anchors } = extractScore(osmd, selected.label, host);
 
-        matcherRef.current = new NoteMatcher(extracted);
+        const matcher = new NoteMatcher(extracted);
+
+        // Same piece as before the home screen: carry on where it stood.
+        const resumeAt = resumeStepRef.current;
+        resumeStepRef.current = null;
+        if (resumeAt && resumeAt.key === selected.key) matcher.seekToStep(resumeAt.step);
+
+        matcherRef.current = matcher;
         anchorsRef.current = anchors;
         setScore(extracted);
         setStatus("bereit");
@@ -386,7 +452,7 @@ export default function App() {
     // zoom and autoFit are read once here; changing them must not re-parse the
     // file, so they drive their own effects instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected]);
+  }, [selected, view]);
 
   // Manual zoom: re-engrave without re-parsing.
   useEffect(() => {
@@ -617,9 +683,25 @@ export default function App() {
     }
   }
 
+  if (view === "home") {
+    return (
+      <div className="app">
+        <Home
+          resume={resumable ? selected.label : null}
+          onResume={() => setView("practice")}
+          onPick={openMode}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <header className="topbar">
+        <button className="icon-button" onClick={goHome} aria-label="Zur Startseite">
+          ←
+        </button>
+
         <button className="piece" onClick={() => setSheet("pieces")}>
           <span className="label">{pieceLabel}</span>
           <span className="caret">▾</span>
@@ -1026,30 +1108,38 @@ function rememberLastPiece(key: string): void {
   }
 }
 
+/**
+ * Reopens the piece from last time, and reports whether there was one — the
+ * home screen offers it as a card, and must not offer a piece nobody picked.
+ */
 function restoreLastPiece(
   available: Selection[],
   select: (piece: Selection) => void,
-): void {
+): boolean {
   let key: string | null = null;
   try {
     key = localStorage.getItem(LAST_PIECE_KEY);
   } catch {
-    return;
+    return false;
   }
-  if (!key) return;
+  if (!key) return false;
 
   const found = available.find((p) => p.key === key);
   if (found) {
     select(found);
-    return;
+    return true;
   }
 
   // An exercise is not in the list — it is described entirely by its key and
   // simply generated again.
   const exercise = parseExerciseKey(key);
-  if (exercise) select(exercise);
+  if (exercise) {
+    select(exercise);
+    return true;
+  }
 
   // Otherwise the piece was deleted since, and the default stands.
+  return false;
 }
 
 function formatSize(bytes: number): string {

@@ -31,6 +31,8 @@ src/core/       Pure TypeScript. No React, no DOM, no browser. Fully tested.
 src/adapters/   One external thing each. Deliberately thin — no decisions,
                 therefore almost no tests.
 src/App.tsx     The shell. Subscribes; does not think.
+src/Home.tsx    The start screen. Reports which mode was tapped; knows
+                nothing about OSMD, storage or the engine.
 ```
 
 - `core/theory.ts` — keys, scale spelling, MIDI conversion
@@ -79,9 +81,15 @@ broken.
 
 ## What works
 
+The app opens on a start screen: one card per mode, and above them the piece
+from last time, so sitting down at the piano is one tap. Leaving a score for
+it keeps the bar that was reached — within the session; a reload starts at the
+top as before.
+
 Scores render as one continuous horizontal staff line, both clefs, correct
-accidentals, fitted to the viewport height automatically on every rotation.
-Tapping the score sets the position. Piece and measure are chosen from the top
+accidentals, fitted to the viewport height automatically on every rotation —
+up to `ZOOM_FIT_MAX`, past which a single bar would fill the screen and there
+would be nothing ahead to read. Tapping the score sets the position. Piece and measure are chosen from the top
 bar. Own MusicXML files can be loaded and persist. Exercises are generated for
 twelve major and twelve harmonic minor keys, one to four octaves, parallel or
 contrary motion, with fingerings for major.
@@ -102,6 +110,8 @@ exercise into reading text. A wrong note turns the highlight red instead.
 - **MicInput**: the large remaining adapter. Verification against expected
   notes, not polyphonic transcription — that distinction is what makes it
   feasible at all. MIDI on the desktop is the reference to measure it against.
+  The start screen already lists it as a third card, greyed out and labelled
+  as unbuilt.
 - **Minor fingerings**: absent on purpose. They do not simply follow the
   parallel or relative major, and a wrongly practised fingering is harder to
   unlearn than none.
