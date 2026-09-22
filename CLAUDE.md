@@ -197,6 +197,12 @@ aim at and still leaves the eyes the work of finding it on the page.
   icon. A service worker serving the HTML network-first would fix it properly;
   there is none yet, and that is also why the first playback of a session needs
   the network.
+- **A page holding the microphone silences the device.** On iOS an open
+  `getUserMedia` stream puts the whole audio session into record mode, and
+  playback then goes quiet or mute — in other tabs and other apps too, not just
+  the page holding it. Cost an hour of "did we break the sound?". The test page
+  now has a stop button and releases the stream when it is hidden; MicInput
+  will have to do the same, and listening and playing back can never overlap.
 - **Playback on iOS**: Web Audio is silenced by the ring switch, and the
   behaviour from the home screen is untested. Same class of unknown as Spike A.
 - **The first playback of a session needs the network.** The recordings are

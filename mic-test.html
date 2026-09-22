@@ -112,6 +112,37 @@ const WINDOW = 4096;
  */
 const DETECT_EVERY_MS = 100;
 
+/**
+ * Die laufende Aufnahme, oder null.
+ *
+ * Muss festgehalten werden, damit sie sich wieder loslassen laesst. Solange
+ * eine Seite das Mikrofon haelt, schaltet iOS die Audio-Sitzung des ganzen
+ * Geraets in den Aufnahmemodus - und dann ist Wiedergabe ueberall leise oder
+ * stumm, auch in anderen Tabs und Apps. Eine Testseite, die das Mikrofon nie
+ * wieder hergibt, macht das Geraet unbrauchbar, bis man den Tab schliesst.
+ */
+let session = null;
+
+function release() {
+  if (!session) return;
+  cancelAnimationFrame(session.raf);
+  for (const track of session.stream.getTracks()) track.stop();
+  void session.ctx.close();
+  session = null;
+
+  const btn = $("go");
+  btn.disabled = false;
+  btn.textContent = "Mikrofon starten";
+  $("cents").textContent = "angehalten - das Mikrofon ist wieder frei";
+}
+
+// Beim Wegschalten von selbst loslassen: sonst haelt eine vergessene Seite im
+// Hintergrund das Mikrofon und legt den Ton des Geraets lahm.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") release();
+});
+window.addEventListener("pagehide", release);
+
 /** Effektivpegel in Dezibel, wo 0 dB volle Aussteuerung ist. */
 function toDb(rms) {
   return rms > 0 ? 20 * Math.log10(rms) : -Infinity;
@@ -120,6 +151,10 @@ function toDb(rms) {
 // iOS verlangt eine echte Nutzergeste, bevor Audio laufen darf. Deshalb der Knopf.
 $("go").addEventListener("click", async () => {
   const btn = $("go");
+  if (session) {
+    release();
+    return;
+  }
   btn.disabled = true;
   btn.textContent = "wird gestartet …";
   $("err").hidden = true;
@@ -147,7 +182,10 @@ $("go").addEventListener("click", async () => {
     ctx.createMediaStreamSource(stream).connect(analyser);
 
     const track = stream.getAudioTracks()[0];
-    btn.textContent = `läuft — ${Math.round(ctx.sampleRate)} Hz`;
+    session = { stream, ctx, raf: 0 };
+
+    btn.disabled = false;
+    btn.textContent = `Mikrofon stoppen — ${Math.round(ctx.sampleRate)} Hz`;
     $("cents").textContent = "summe einen Ton";
     $("numbers").hidden = false;
 
@@ -214,7 +252,7 @@ function loop(analyser, sampleRate, track) {
       ["Pegelautomatik", settings.autoGainControl === undefined ? "unbekannt" : String(settings.autoGainControl)],
     ].map(([k, v]) => `<div class="row"><span class="muted">${k}</span><span>${v}</span></div>`).join("");
 
-    requestAnimationFrame(frame);
+    if (session) session.raf = requestAnimationFrame(frame);
   }
 
   frame();
