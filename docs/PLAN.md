@@ -22,7 +22,8 @@ ein bis vier Oktaven, parallel oder in Gegenbewegung.
 Veroeffentlicht unter <https://felix25192.github.io/piano-trainer/>, bei
 jedem Push auf `main` automatisch aktualisiert. 160 Tests.
 
-Eine Stelle laesst sich ab der Markierung vorspielen, im Tempo der Noten.
+Eine Stelle laesst sich ab der Markierung vorspielen, im Tempo der Noten,
+mit Aufnahmen eines echten Fluegels.
 
 **Als Naechstes.** Spike A, sobald iPad und Klavier zusammen verfuegbar sind.
 Danach MicInput, der dickste verbleibende Brocken. Die offenen Punkte im
@@ -687,3 +688,66 @@ Daten dafuer liegen jetzt bereit, der Rest ist eine Zeile und ein paar Tests.
 Der Klingelschalter des iPads schaltet Web Audio stumm - ungetestet, gleiche
 Sorte Unbekannte wie Spike A. Dynamik und Pedal werden ignoriert: alles klingt
 gleich laut, nichts klingt nach. Bei Chopin und Mondschein hoert man genau das.
+
+## Echtes Klavier statt Synthesizer (22.09.2026)
+
+Der synthetische Klang hat einwandfrei funktioniert und trotzdem nicht
+getaugt - Felix' Urteil nach dem ersten Hoeren am Geraet. Damit ist er raus.
+Der Port hat genau das geleistet, wofuer er da war: eine neue Datei neben der
+alten, `SampledPiano.ts` statt `SynthOutput.ts`, und darueber aendert sich
+nichts ausser einem Import. `core/playback.ts` hat niemand angefasst.
+
+Es sind jetzt Aufnahmen des **Salamander Grand Piano** von Alexander Holm, ein
+Yamaha C5, CC-BY 3.0. Dreissig Dateien, alle drei Halbtoene von A0 bis C8, rund
+2 MB. Die Lizenz verlangt Namensnennung, die steht in `public/piano/SOURCES.md`
+und im Einstellungsmenue.
+
+Der Abstand von drei Halbtoenen ist Holms eigener - "sampled in minor thirds
+from the lowest A" steht in seiner README. Damit wird keine Note um mehr als
+einen Halbton verschoben, und das hoert man nicht.
+
+### Der Speicher war das Problem, nicht die Groesse
+
+2 MB herunterzuladen ist nichts. Dekodiert sind es **142 MB**: die Aufnahmen
+sind stereo und laufen bis zu fuenfundzwanzig Sekunden, weil sie einer tiefen
+Saite bis in die Stille folgen. So viel haelt ein Tablet nicht, der Tab fliegt
+raus.
+
+Drei Massnahmen, jede gemessen statt geschaetzt:
+
+- **Auf Mono gefaltet**: 71 MB. Stereobreite ist auf einem Tabletlautsprecher
+  ohnehin kein Gewinn.
+- **Auf zwoelf Sekunden gekappt**: 50 MB. Nichts braucht den Rest - eine Note
+  wird gedaempft, wenn ihr notierter Wert vorbei ist, und die laengste Note in
+  den sieben Stuecken ist eine Ganze bei 44, also fuenfeinhalb Sekunden, bei
+  halbem Tempo elf. Der Schnitt bekommt eine kurze Ausblendung, sonst knackt er.
+- **Nur geladen, was vorkommt**: Das Menuett braucht fuenfzehn der dreissig
+  Aufnahmen, eine C-Dur-Tonleiter fuenf. Was einmal da ist, bleibt.
+
+### Der Pegel wurde gemessen, nicht gehoert
+
+Hier kann niemand zuhoeren, also haengt ein Analyser am Ausgang und meldet die
+Spitze. Der erste Versuch lag bei **0,238** - viel zu leise, weil der
+Kompressor bei -12 dB alles wegdrueckte. Die Aufnahmen selbst gipfeln je nach
+Lage nur zwischen 0,08 und 0,31.
+
+Also neu gerechnet: Faktor 2 brachte den Menuett-Anfang auf 0,897 - laut
+genug, aber ohne Reserve fuer ein Stueck mit vier Toenen pro Hand. Bei Faktor
+1,6 erreicht die Chopin-Nocturne, das dichteste der sieben, **0,888 vor und
+0,921 hinter dem Begrenzer**. Kein Clipping, und der Begrenzer steht fast
+immer still - genau so soll er stehen, denn ein Begrenzer, der dauernd
+arbeitet, nimmt einem Akkord den Unterschied zum Einzelton.
+
+### Was gleich geblieben ist
+
+Der Rhythmus. Nach dem Tausch gemessen: Menuett bei 126 weiterhin 0,476 s pro
+Viertel und 0,238 s pro Achtel. Das war zu erwarten, weil der Zeitplan aus
+`core/playback.ts` kommt und den hat der Tausch nicht beruehrt - aber erwartet
+ist nicht geprueft.
+
+### Neu offen
+
+Das erste Vorspielen einer Sitzung braucht Netz. Die Aufnahmen liegen in der
+App, aber ohne Service Worker haelt sie nichts offline vor; einmal geladen
+reicht der Browsercache. Am Klavier ohne WLAN muss man also einmal vorher
+gespielt haben.

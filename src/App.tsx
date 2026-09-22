@@ -17,7 +17,7 @@ import { exerciseToMusicXml } from "./core/musicxml";
 import { keyOf, type Key, type Letter } from "./core/theory";
 import { buildSchedule, stepAtTime, type Schedule } from "./core/playback";
 import type { NoteOutput } from "./core/NoteOutput";
-import { isAudioSupported, SynthOutput } from "./adapters/SynthOutput";
+import { isAudioSupported, SampledPiano } from "./adapters/SampledPiano";
 import Home, { type ModeId } from "./Home";
 import "./App.css";
 
@@ -263,7 +263,15 @@ export default function App() {
     octaves: 2,
     motion: "parallel",
   });
-  const [playing, setPlaying] = useState(false);
+  /**
+   * Idle, fetching recordings, or sounding.
+   *
+   * Loading is its own state rather than a flag beside "playing", because the
+   * first press of a session waits on a couple of megabytes of piano and the
+   * button has to say so instead of looking dead.
+   */
+  const [playback, setPlayback] = useState<"idle" | "loading" | "playing">("idle");
+  const [audioError, setAudioError] = useState<string | null>(null);
   const [tempoFactor, setTempoFactor] = useState(1);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState<string | null>(null);
@@ -337,7 +345,7 @@ export default function App() {
     }
     outputRef.current?.stop();
     scheduleRef.current = null;
-    setPlaying(false);
+    setPlayback("idle");
   }, []);
 
   /**
@@ -710,6 +718,7 @@ export default function App() {
   const pieceLabel = selected.label;
   const busy = status !== "bereit";
   const audioSupported = isAudioSupported();
+  const playing = playback !== "idle";
   /**
    * The tempo in force where the highlight stands, so the setting can name
    * what its percentages are a share of. It is not one number per piece: the
@@ -731,7 +740,7 @@ export default function App() {
    * listening to a passage leaves you ready to play the next one — rather
    * than somewhere a separate playback marker happened to stop.
    */
-  function togglePlay() {
+  async function togglePlay() {
     if (playing) {
       stopPlayback();
       return;
@@ -745,11 +754,25 @@ export default function App() {
 
     // Built on the first press rather than on mount: a browser hands out sound
     // only from inside a gesture, and iOS is strict about it.
-    outputRef.current ??= new SynthOutput();
+    const output = (outputRef.current ??= new SampledPiano());
 
     scheduleRef.current = schedule;
-    outputRef.current.start(schedule.notes);
-    setPlaying(true);
+    setAudioError(null);
+    setPlayback("loading");
+
+    try {
+      await output.start(schedule.notes);
+    } catch (e: unknown) {
+      stopPlayback();
+      setAudioError(describeError(e));
+      return;
+    }
+
+    // The press may have been taken back while the recordings were still
+    // coming in, in which case the output quietly declined to start.
+    if (output.elapsed() === null) return;
+
+    setPlayback("playing");
     follow();
     followRef.current = setInterval(follow, FOLLOW_MS);
   }
@@ -901,6 +924,7 @@ export default function App() {
       </header>
 
       {error && <pre className="error-box">{error}</pre>}
+      {audioError && <pre className="error-box">{audioError}</pre>}
 
       <div
         className={"scroller" + (progress?.hasError ? " wrong" : "")}
@@ -930,10 +954,16 @@ export default function App() {
         <button
           className={"secondary" + (playing ? " on" : "")}
           onClick={togglePlay}
-          aria-label={playing ? "Wiedergabe anhalten" : "Ab hier vorspielen"}
+          aria-label={
+            playback === "playing"
+              ? "Wiedergabe anhalten"
+              : playback === "loading"
+                ? "Klänge werden geladen"
+                : "Ab hier vorspielen"
+          }
           disabled={busy || !audioSupported}
         >
-          {playing ? "■" : "▶"}
+          {playback === "playing" ? "■" : playback === "loading" ? "…" : "▶"}
         </button>
         <button
           className="primary"
@@ -1216,6 +1246,11 @@ export default function App() {
                       ? `Bezogen auf das Tempo der Noten — hier gerade ${Math.round(currentBpm)} Viertel pro Minute.`
                       : "Bezogen auf das Tempo, das in den Noten steht."
                     : "Dieser Browser kann keinen Ton ausgeben."}
+                </p>
+                <p className="hint">
+                  Klang: Salamander Grand Piano von Alexander Holm, CC-BY 3.0.
+                  Die Aufnahmen liegen in der App und werden beim ersten
+                  Vorspielen geladen.
                 </p>
               </div>
 

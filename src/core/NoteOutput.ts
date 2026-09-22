@@ -17,9 +17,12 @@ export interface NoteOutput {
    * not from any clock the caller can see.
    *
    * Must be called from a user gesture: browsers refuse to make a sound
-   * otherwise, and iOS is strict about it.
+   * otherwise, and iOS is strict about it. The promise it returns settles once
+   * the sound is actually under way — an output that has recordings to fetch
+   * needs a moment first, and the caller has to be able to say so rather than
+   * look broken. It rejects when nothing can be played at all.
    */
-  start(notes: readonly ScheduledNote[]): void;
+  start(notes: readonly ScheduledNote[]): Promise<void>;
 
   /** Silences everything immediately. Safe to call when nothing is playing. */
   stop(): void;
