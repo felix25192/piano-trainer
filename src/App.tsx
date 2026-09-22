@@ -119,7 +119,14 @@ export default function App() {
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState<string | null>(null);
   const [score, setScore] = useState<Score | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  /**
+   * Which panel is open, if any.
+   *
+   * Pieces and measures get their own, reachable by tapping what they show in
+   * the bar. Both are things you change *while* practising, so routing them
+   * through a settings menu would be a detour taken dozens of times an hour.
+   */
+  const [sheet, setSheet] = useState<"pieces" | "measures" | "settings" | null>(null);
   const [tick, setTick] = useState(0);
 
   // Pieces the user brought along, read once on start. The piece that was open
@@ -366,6 +373,17 @@ export default function App() {
     setTick((t) => t + 1);
   }, [restoreCursor]);
 
+  const jumpToMeasure = useCallback(
+    (measure: number) => {
+      matcherRef.current?.seekToMeasure(measure);
+      restoreCursor();
+      scrollCursorIntoView(osmdRef.current, scrollRef.current, "smooth");
+      setSheet(null);
+      setTick((t) => t + 1);
+    },
+    [restoreCursor],
+  );
+
   // A tap in the score starts from there. Practising means repeating one
   // awkward bar, not the opening.
   const onScorePointerDown = useCallback((e: React.PointerEvent) => {
@@ -424,6 +442,21 @@ export default function App() {
     setZoom(round(clamp(next, ZOOM_MIN, ZOOM_MAX)));
   }
 
+  /**
+   * Measures that actually hold something to play.
+   *
+   * A piece can open with a bar of rests in one hand, and offering a jump to a
+   * measure that needs no input would land the position somewhere else without
+   * explanation.
+   */
+  const measureNumbers = score
+    ? [
+        ...new Set(
+          score.steps.filter((s) => s.notes.length > 0).map((s) => s.measure),
+        ),
+      ].sort((a, b) => a - b)
+    : [];
+
   const pieces: Selection[] = [
     ...BUNDLED,
     ...library.map(
@@ -465,7 +498,7 @@ export default function App() {
       label: first.title,
       id: first.id,
     });
-    setSettingsOpen(false);
+    setSheet(null);
   }
 
   async function onRemovePiece(entry: LibraryEntry) {
@@ -487,10 +520,19 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <span className="piece">{pieceLabel}</span>
-        {progress && !progress.finished && (
-          <span className="measure">Takt {progress.measure}</span>
-        )}
+        <button className="piece" onClick={() => setSheet("pieces")}>
+          <span className="label">{pieceLabel}</span>
+          <span className="caret">▾</span>
+        </button>
+
+        <button
+          className="measure"
+          onClick={() => setSheet("measures")}
+          disabled={!score}
+        >
+          Takt {progress && !progress.finished ? progress.measure : "—"}
+          <span className="caret">▾</span>
+        </button>
         {/*
           The expected notes are deliberately NOT shown. Naming them turns the
           exercise into reading text instead of reading notation, which is the
@@ -500,7 +542,7 @@ export default function App() {
         <span className="expect">{busy ? status : progress?.finished ? "zu Ende" : ""}</span>
         <button
           className="icon-button"
-          onClick={() => setSettingsOpen(true)}
+          onClick={() => setSheet("settings")}
           aria-label="Einstellungen"
         >
           ⚙
@@ -536,18 +578,14 @@ export default function App() {
         </button>
       </div>
 
-      {settingsOpen && (
+      {sheet && (
         <>
-          <button
-            className="backdrop"
-            onClick={() => setSettingsOpen(false)}
-            aria-label="Einstellungen schließen"
-          />
-          <div className="sheet" role="dialog" aria-label="Einstellungen">
-            <h2>Einstellungen</h2>
+          <button className="backdrop" onClick={() => setSheet(null)} aria-label="Schließen" />
 
-            <div className="field">
-              <span>Stücke</span>
+          {sheet === "pieces" && (
+            <div className="sheet" role="dialog" aria-label="Stück wählen">
+              <h2>Stück</h2>
+
               <ul className="pieces">
                 {pieces.map((piece) => {
                   const entry =
@@ -560,7 +598,7 @@ export default function App() {
                         className="pick"
                         onClick={() => {
                           choosePiece(piece);
-                          setSettingsOpen(false);
+                          setSheet(null);
                         }}
                       >
                         <span className="text">
@@ -585,65 +623,87 @@ export default function App() {
 
               {isLibrarySupported() ? (
                 <label className="add-file">
-                  <input
-                    type="file"
-                    accept={scoreFileAccept()}
-                    multiple
-                    onChange={onFilesPicked}
-                  />
+                  <input type="file" accept={scoreFileAccept()} multiple onChange={onFilesPicked} />
                   <span>Eigene Noten hinzufügen</span>
                 </label>
               ) : (
-                <p className="hint">
-                  Dieser Browser kann keine eigenen Stücke speichern.
-                </p>
+                <p className="hint">Dieser Browser kann keine eigenen Stücke speichern.</p>
               )}
 
               {libraryError && <p className="warn">{libraryError}</p>}
 
               <p className="hint">
-                MusicXML als .mxl, .musicxml oder .xml. Die Dateien bleiben auf
-                diesem Gerät und werden nirgendwohin geschickt.
+                MusicXML als .mxl, .musicxml oder .xml. Die Dateien bleiben auf diesem
+                Gerät und werden nirgendwohin geschickt.
               </p>
+
+              <button className="close" onClick={() => setSheet(null)}>Fertig</button>
             </div>
+          )}
 
-            <label className="row-toggle">
-              An die Bildschirmhöhe anpassen
-              <input
-                type="checkbox"
-                checked={autoFit}
-                onChange={(e) => setAutoFit(e.target.checked)}
-              />
-            </label>
+          {sheet === "measures" && (
+            <div className="sheet" role="dialog" aria-label="Takt wählen">
+              <h2>Takt</h2>
 
-            <div className="field">
-              <span>Notengröße</span>
-              <div className="stepper">
-                <button
-                  onClick={() => setZoomManually(zoom - ZOOM_STEP)}
-                  disabled={zoom <= ZOOM_MIN}
-                  aria-label="Kleiner"
-                >
-                  −
-                </button>
-                <output>{zoom.toFixed(1)}×</output>
-                <button
-                  onClick={() => setZoomManually(zoom + ZOOM_STEP)}
-                  disabled={zoom >= ZOOM_MAX}
-                  aria-label="Größer"
-                >
-                  +
-                </button>
+              <div className="measures">
+                {measureNumbers.map((number) => (
+                  <button
+                    key={number}
+                    className={number === progress?.measure ? "current" : ""}
+                    onClick={() => jumpToMeasure(number)}
+                  >
+                    {number}
+                  </button>
+                ))}
               </div>
-              <p className="hint">
-                Von Hand einstellen schaltet die automatische Anpassung ab.
-              </p>
-            </div>
 
-            <button className="close" onClick={() => setSettingsOpen(false)}>
-              Fertig
-            </button>
-          </div>
+              <p className="hint">
+                Schneller geht es, indem du direkt ins Notenbild tippst — dort landest
+                du auf der Note statt am Taktanfang.
+              </p>
+
+              <button className="close" onClick={() => setSheet(null)}>Fertig</button>
+            </div>
+          )}
+
+          {sheet === "settings" && (
+            <div className="sheet" role="dialog" aria-label="Einstellungen">
+              <h2>Einstellungen</h2>
+
+              <label className="row-toggle">
+                An die Bildschirmhöhe anpassen
+                <input
+                  type="checkbox"
+                  checked={autoFit}
+                  onChange={(e) => setAutoFit(e.target.checked)}
+                />
+              </label>
+
+              <div className="field">
+                <span>Notengröße</span>
+                <div className="stepper">
+                  <button
+                    onClick={() => setZoomManually(zoom - ZOOM_STEP)}
+                    disabled={zoom <= ZOOM_MIN}
+                    aria-label="Kleiner"
+                  >
+                    −
+                  </button>
+                  <output>{zoom.toFixed(1)}×</output>
+                  <button
+                    onClick={() => setZoomManually(zoom + ZOOM_STEP)}
+                    disabled={zoom >= ZOOM_MAX}
+                    aria-label="Größer"
+                  >
+                    +
+                  </button>
+                </div>
+                <p className="hint">Von Hand einstellen schaltet die automatische Anpassung ab.</p>
+              </div>
+
+              <button className="close" onClick={() => setSheet(null)}>Fertig</button>
+            </div>
+          )}
         </>
       )}
     </div>

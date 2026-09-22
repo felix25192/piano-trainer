@@ -474,3 +474,20 @@ Beide Befunde stehen in `public/scores/SOURCES.md`.
 Alle sieben im Browser geladen, keine Fehler, jedes rendert mit sauber
 eingepasster Hoehe. Breite reicht von 7.500 Pixeln (Bach-Menuett) bis 31.850
 (Mozart KV 545).
+
+## Stueck und Takt direkt in der Kopfzeile (22.09.2026)
+
+Beides waren bisher Beschriftungen und lagen hinter dem Einstellungsmenue.
+Beides wechselt man aber *waehrend* des Uebens, teils dutzendfach pro
+Stunde - ein Umweg ueber ein Menue ist dafuer der falsche Ort.
+
+Jetzt sind es Schaltflaechen. Der Stueckname oeffnet die Stueckliste, die
+Taktzahl ein Gitter aller Takte. Das Einstellungsmenue enthaelt wieder nur
+Einstellungen.
+
+Das Taktgitter zeigt nur Takte, in denen tatsaechlich etwas zu spielen ist.
+Ein Sprung auf einen reinen Pausentakt wuerde die Position wortlos
+woanders hin setzen, weil `seekToMeasure` Pausen ueberspringt.
+
+Ein Hinweis im Panel verweist aufs direkte Antippen im Notenbild - das ist
+schneller und landet auf der Note statt am Taktanfang.

@@ -51,21 +51,75 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
   flex: none;
 }
 
-.piece {
+/*
+ * Piece and measure are buttons, not labels. Both get changed constantly while
+ * practising, so they open their panel where they stand rather than hiding
+ * behind a settings menu.
+ */
+.topbar .piece,
+.topbar .measure {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 9px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font: 13px system-ui;
+  cursor: pointer;
+}
+
+.topbar .piece:active,
+.topbar .measure:active { background: var(--raised); color: var(--ink); }
+
+.topbar .piece:disabled,
+.topbar .measure:disabled { opacity: .5; cursor: default; }
+
+.topbar .piece {
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.topbar .piece .label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--muted);
-  font-size: 13px;
 }
 
-.measure {
+.topbar .measure {
   flex: none;
-  color: var(--muted);
-  font-size: 13px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.caret { flex: none; font-size: 9px; opacity: .6; }
+
+/* Grid of measure numbers — big enough to hit, dense enough to scan. */
+.measures {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 6px;
+}
+
+.measures button {
+  height: 44px;
+  background: var(--raised);
+  color: var(--ink);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font: 600 15px ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.measures button:active { filter: brightness(1.4); }
+
+.measures button.current {
+  border-color: var(--accent);
+  background: #24304d;
 }
 
 /* The one thing worth glancing at mid-piece. */
