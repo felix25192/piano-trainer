@@ -383,3 +383,56 @@ Umgesetzt ueber `transform`, weil OSMD bei jeder Cursorbewegung `top` und
 
 Dazu ein weicher Uebergang der Position (120ms), der dem Auge das Folgen
 erleichtert.
+
+## Eigene Stuecke laden (22.09.2026)
+
+### Erwartete Noten nicht mehr anzeigen
+
+Stand die naechste Note als Text im Bild, liest man den Text statt der Noten.
+Der Trainingseffekt war der ganze Zweck. Geblieben ist das Signal ohne die
+Antwort: Bei einem falschen Ton wird der Markierungsbalken rot — man merkt,
+dass es an einem selbst liegt und die App nicht haengt, erfaehrt aber nicht,
+was richtig gewesen waere.
+
+### OSMD nimmt ein Blob
+
+`load(content: string | Document | Blob)`. Eine Datei aus einem Auswahlfeld
+*ist* ein Blob, also brauchen `.xml`, `.musicxml` und `.mxl` keine
+Sonderbehandlung und nichts muss selbst entpackt werden.
+
+### Ablage in IndexedDB, nicht localStorage
+
+IndexedDB haelt ein Blob wie es ist. localStorage muesste die Datei
+base64-kodiert als Zeichenkette fuehren, was sie um ein Drittel aufblaeht und
+gegen ein Kontingent von wenigen Megabyte drueckt. Eine gepackte Partitur
+liegt bei Zehnern von Kilobyte, eine ungepackte bei mehreren hundert — ein
+Regal voller Stuecke wuerde anstossen.
+
+Was dagegen *in* localStorage gehoert: welches Stueck zuletzt offen war. Eine
+kurze Zeichenkette, und geht sie verloren, kostet es einen Tipp.
+
+### Ein Reihenfolgefehler, der Zeit gekostet haette
+
+Das Merken der Auswahl hing zuerst an einem Effekt auf `selected`. Der
+feuert beim Mounten einmal mit dem Standardwert — und ueberschreibt damit
+genau den Wert, den die Wiederherstellung gleich lesen will, weil die
+Stueckliste asynchron eintrifft.
+
+Jetzt haengt das Speichern an der Handlung, nicht am Zustand: `choosePiece()`
+setzt und merkt in einem, und alle Auswahlpfade laufen darueber.
+
+### Aufteilung
+
+- `core/scoreFile.ts` — was als Notendatei gilt und wie sie heisst. Reine
+  Zeichenkettenarbeit, getestet: Endungen, Pfadreste, Unterstriche der
+  Notenseiten, der Abkuerzungspunkt in `Arrg..mxl`, leere Namen.
+- `adapters/scoreLibrary.ts` — IndexedDB. Keine Entscheidungen, nur Ablage.
+
+65 Tests, alle gruen.
+
+### Offen
+
+- Ein Titel aus der Datei selbst waere besser als einer aus dem Dateinamen;
+  viele Partituren tragen einen.
+- Speicherplatz wird nicht begrenzt. Bei Dutzenden Stuecken waere eine
+  Anzeige des Verbrauchs sinnvoll.

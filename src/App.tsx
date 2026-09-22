@@ -3,6 +3,15 @@ import { OpenSheetMusicDisplay } from "opensheetmusicdisplay";
 import { NoteMatcher } from "./core/NoteMatcher";
 import type { Score } from "./core/score";
 import { extractScore, stepAtFraction } from "./adapters/osmdScore";
+import {
+  addScore,
+  getScoreBlob,
+  isLibrarySupported,
+  listScores,
+  removeScore,
+  type LibraryEntry,
+} from "./adapters/scoreLibrary";
+import { scoreFileAccept } from "./core/scoreFile";
 import "./App.css";
 
 /**
@@ -16,18 +25,31 @@ import "./App.css";
  * adapter will, which is what the NoteInputSource port buys us.
  */
 
+/**
+ * A piece comes either with the app or from the user's own files. Both end up
+ * as something OSMD can load — a URL or a Blob — but they are told apart here
+ * so the settings list can offer a delete for one and not the other.
+ */
+type Selection =
+  | { kind: "bundled"; key: string; label: string; url: string }
+  | { kind: "library"; key: string; label: string; id: string };
+
 // BASE_URL is "/" during development and "/piano-trainer/" in the build, so
 // every bundled asset has to be addressed through it rather than from the root.
-const SCORES = [
+const BUNDLED: Selection[] = [
   {
+    kind: "bundled",
+    key: "clementi",
     label: "Clementi — Sonatina Op. 36 No. 1",
     url: `${import.meta.env.BASE_URL}scores/clementi-sonatina-op36-no1.xml`,
   },
   {
+    kind: "bundled",
+    key: "moonlight",
     label: "Beethoven — Mondscheinsonate, 1. Satz",
     url: `${import.meta.env.BASE_URL}scores/moonlight-sonata-mvt1.mxl`,
   },
-] as const;
+];
 
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 4;
@@ -47,7 +69,9 @@ export default function App() {
   /** Start of the current pointer gesture, to tell a tap from a scroll swipe. */
   const pressRef = useRef<{ x: number; y: number } | null>(null);
 
-  const [scoreUrl, setScoreUrl] = useState<string>(SCORES[0].url);
+  const [selected, setSelected] = useState<Selection>(BUNDLED[0]);
+  const [library, setLibrary] = useState<LibraryEntry[]>([]);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1.2);
   const [autoFit, setAutoFit] = useState(true);
   const [status, setStatus] = useState("idle");
@@ -55,6 +79,49 @@ export default function App() {
   const [score, setScore] = useState<Score | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tick, setTick] = useState(0);
+
+  // Pieces the user brought along, read once on start. The piece that was open
+  // last is reopened with them, so sitting down at the piano and reloading
+  // does not mean hunting for it again.
+  useEffect(() => {
+    if (!isLibrarySupported()) {
+      restoreLastPiece(BUNDLED, setSelected);
+      return;
+    }
+    listScores()
+      .then((entries) => {
+        setLibrary(entries);
+        restoreLastPiece(
+          [
+            ...BUNDLED,
+            ...entries.map(
+              (e): Selection => ({
+                kind: "library",
+                key: `lib:${e.id}`,
+                label: e.title,
+                id: e.id,
+              }),
+            ),
+          ],
+          setSelected,
+        );
+      })
+      .catch((e: unknown) => setLibraryError(describeError(e)));
+  }, []);
+
+  /**
+   * Opens a piece and remembers it for next time.
+   *
+   * The remembering deliberately hangs off the act of choosing rather than off
+   * a change of state. As an effect on `selected` it would fire once on mount
+   * with the default still in place and overwrite the very value the restore
+   * is about to read — the restore runs later, because the library list
+   * arrives asynchronously.
+   */
+  const choosePiece = useCallback((piece: Selection) => {
+    setSelected(piece);
+    rememberLastPiece(piece.key);
+  }, []);
 
   /** Puts OSMD's cursor back where the engine stands after a re-render. */
   const restoreCursor = useCallback(() => {
@@ -139,16 +206,25 @@ export default function App() {
     osmdRef.current = osmd;
     tightenForScreen(osmd);
 
-    osmd
-      .load(scoreUrl)
+    // A bundled piece is a URL OSMD fetches itself; one of the user's own is a
+    // Blob out of storage. `load` takes either.
+    const source: Promise<string | Blob> =
+      selected.kind === "bundled"
+        ? Promise.resolve(selected.url)
+        : getScoreBlob(selected.id).then((blob) => {
+            if (!blob) throw new Error("Diese Datei liegt nicht mehr im Speicher.");
+            return blob;
+          });
+
+    source
+      .then((content) => osmd.load(content, selected.label))
       .then(() => {
         if (cancelled) return;
         osmd.zoom = zoom;
         osmd.render();
         osmd.cursor.show();
 
-        const label = SCORES.find((s) => s.url === scoreUrl)?.label ?? scoreUrl;
-        const { score: extracted, anchors } = extractScore(osmd, label, host);
+        const { score: extracted, anchors } = extractScore(osmd, selected.label, host);
 
         matcherRef.current = new NoteMatcher(extracted);
         anchorsRef.current = anchors;
@@ -178,7 +254,7 @@ export default function App() {
     // zoom and autoFit are read once here; changing them must not re-parse the
     // file, so they drive their own effects instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scoreUrl]);
+  }, [selected]);
 
   // Manual zoom: re-engrave without re-parsing.
   useEffect(() => {
@@ -298,12 +374,72 @@ export default function App() {
   const progress = matcherRef.current?.progress;
   void tick; // progress is read off a ref; `tick` is what forces the re-read
 
-  const pieceLabel = SCORES.find((s) => s.url === scoreUrl)?.label ?? "—";
+  const pieceLabel = selected.label;
   const busy = status !== "bereit";
 
   function setZoomManually(next: number) {
     setAutoFit(false);
     setZoom(round(clamp(next, ZOOM_MIN, ZOOM_MAX)));
+  }
+
+  const pieces: Selection[] = [
+    ...BUNDLED,
+    ...library.map(
+      (entry): Selection => ({
+        kind: "library",
+        key: `lib:${entry.id}`,
+        label: entry.title,
+        id: entry.id,
+      }),
+    ),
+  ];
+
+  async function onFilesPicked(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = [...(event.target.files ?? [])];
+    // Clearing the input means picking the same file twice in a row still
+    // fires a change event.
+    event.target.value = "";
+    if (files.length === 0) return;
+
+    setLibraryError(null);
+    const added: LibraryEntry[] = [];
+
+    for (const file of files) {
+      try {
+        added.push(await addScore(file));
+      } catch (e: unknown) {
+        setLibraryError(describeError(e));
+      }
+    }
+
+    if (added.length === 0) return;
+
+    setLibrary((prev) => [...added, ...prev]);
+    // Open the first new piece straight away — that is why it was added.
+    const first = added[0];
+    choosePiece({
+      kind: "library",
+      key: `lib:${first.id}`,
+      label: first.title,
+      id: first.id,
+    });
+    setSettingsOpen(false);
+  }
+
+  async function onRemovePiece(entry: LibraryEntry) {
+    if (!window.confirm(`„${entry.title}" entfernen?`)) return;
+
+    try {
+      await removeScore(entry.id);
+    } catch (e: unknown) {
+      setLibraryError(describeError(e));
+      return;
+    }
+
+    setLibrary((prev) => prev.filter((e) => e.id !== entry.id));
+    if (selected.kind === "library" && selected.id === entry.id) {
+      choosePiece(BUNDLED[0]);
+    }
   }
 
   return (
@@ -368,14 +504,63 @@ export default function App() {
           <div className="sheet" role="dialog" aria-label="Einstellungen">
             <h2>Einstellungen</h2>
 
-            <label className="field">
-              <span>Stück</span>
-              <select value={scoreUrl} onChange={(e) => setScoreUrl(e.target.value)}>
-                {SCORES.map((s) => (
-                  <option key={s.url} value={s.url}>{s.label}</option>
-                ))}
-              </select>
-            </label>
+            <div className="field">
+              <span>Stücke</span>
+              <ul className="pieces">
+                {pieces.map((piece) => {
+                  const entry =
+                    piece.kind === "library"
+                      ? library.find((e) => e.id === piece.id)
+                      : undefined;
+                  return (
+                    <li key={piece.key} className={piece.key === selected.key ? "current" : ""}>
+                      <button
+                        className="pick"
+                        onClick={() => {
+                          choosePiece(piece);
+                          setSettingsOpen(false);
+                        }}
+                      >
+                        <span className="name">{piece.label}</span>
+                        {entry && <span className="meta">{formatSize(entry.size)}</span>}
+                      </button>
+                      {entry && (
+                        <button
+                          className="remove"
+                          onClick={() => onRemovePiece(entry)}
+                          aria-label={`${piece.label} entfernen`}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+
+              {isLibrarySupported() ? (
+                <label className="add-file">
+                  <input
+                    type="file"
+                    accept={scoreFileAccept()}
+                    multiple
+                    onChange={onFilesPicked}
+                  />
+                  <span>Eigene Noten hinzufügen</span>
+                </label>
+              ) : (
+                <p className="hint">
+                  Dieser Browser kann keine eigenen Stücke speichern.
+                </p>
+              )}
+
+              {libraryError && <p className="warn">{libraryError}</p>}
+
+              <p className="hint">
+                MusicXML als .mxl, .musicxml oder .xml. Die Dateien bleiben auf
+                diesem Gerät und werden nirgendwohin geschickt.
+              </p>
+            </div>
 
             <label className="row-toggle">
               An die Bildschirmhöhe anpassen
@@ -485,6 +670,52 @@ function stretchCursor(host: HTMLElement | null): void {
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
+}
+
+function describeError(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+const LAST_PIECE_KEY = "piano-trainer.lastPiece";
+
+/**
+ * Which piece was open last.
+ *
+ * localStorage is right for this and wrong for the scores themselves: it holds
+ * one short string, and losing it costs nothing more than a tap. Every access
+ * is guarded because it throws outright in a private window or with site data
+ * blocked.
+ */
+function rememberLastPiece(key: string): void {
+  try {
+    localStorage.setItem(LAST_PIECE_KEY, key);
+  } catch {
+    // Storage unavailable. The app works, it just forgets.
+  }
+}
+
+function restoreLastPiece(
+  available: Selection[],
+  select: (piece: Selection) => void,
+): void {
+  let key: string | null = null;
+  try {
+    key = localStorage.getItem(LAST_PIECE_KEY);
+  } catch {
+    return;
+  }
+  if (!key) return;
+
+  // The piece may have been deleted since; then the default stands.
+  const found = available.find((p) => p.key === key);
+  if (found) select(found);
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${Math.round(kb)} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
 }
 
 /** Avoids 1.7999999999999998 from repeated floating point addition. */
