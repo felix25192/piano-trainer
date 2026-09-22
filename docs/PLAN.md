@@ -884,3 +884,51 @@ harmlos: ihr Effektivpegel liegt 0,3 s nach dem Anschlag bei 0,0014 und
 0,0016, unter der Stille-Schwelle von 0,002. Das Fenster ist tatsaechlich fast
 still, das Schweigen also richtig. Keines der sieben Stuecke kommt jemals dort
 hinauf.
+
+### Nachtrag: der naheliegende Ausweg war falsch (22.09.2026)
+
+Oben steht als Ausweg aus dem Geschwindigkeitsproblem: die App kennt den
+erwarteten Ton, also muss nur ein schmales Band darum durchsucht werden. Das
+war eine Behauptung, keine Messung. Nachgemessen ist sie **falsch**, und zwar
+so, dass sie die App zum Luegner gemacht haette.
+
+    Eingeengt auf +-100 Cent:        28/30 richtig,  4,4 ms
+      Oktave zu hoch gespielt:       24/26 faelschlich angenommen
+      Halbton zu hoch gespielt:      28/29 faelschlich angenommen
+
+    Voll erkennen, dann vergleichen: 28/30 richtig, 18,2 ms
+      Oktave zu hoch gespielt:        0/26
+      Oktave zu tief gespielt:        0/26
+      Halbton zu hoch gespielt:       0/29
+      Halbton zu tief gespielt:       0/29
+
+Zwei Ursachen, beide grundsaetzlich:
+
+**Eine Welle mit der Periode T wiederholt sich auch bei 2T.** Wer nur um den
+erwarteten Ton herum sucht und der Spieler greift eine Oktave zu hoch, findet
+dort eine echte Wiederholung - und meldet zufrieden den erwarteten Ton. Das
+laesst sich durch ein engeres Band nicht heilen: bei +-25 Cent sind es
+immer noch 23 von 26.
+
+**YIN normiert gegen den Bereich, ueber den es gerechnet wird.** Die
+kumulierte mittlere Differenz teilt jeden Wert durch den laufenden Mittelwert
+aller kleineren Verschiebungen. Wird dieser Bereich beschnitten, verschiebt
+sich der Massstab, und die feste Schwelle von 0,15 bedeutet nicht mehr
+dasselbe. Deshalb rutschen auch Halbtonfehler durch, die musikalisch gar
+nichts mit der erwarteten Periode zu tun haben.
+
+Ein eingeengtes YIN ist also kein schnelleres YIN, sondern ein anderes und
+schlechteres. Fuer einen Trainer ist das die falsche Richtung: ein
+uebersehener richtiger Ton aergert, ein durchgewunkener falscher bringt
+Falsches bei.
+
+### Der richtige Ausweg ist nicht enger, sondern seltener
+
+Die Erkennung bleibt breit und wird danach mit dem erwarteten Ton verglichen.
+Dass sie 18 ms kostet, ist nur dann ein Problem, wenn sie dauernd laeuft - und
+das muss sie nicht. Der Pruefstand hat ja schon gezeigt, dass nur der
+**Anschlag** zaehlt: 28/30 in den ersten 50 ms, 15/30 nach drei Sekunden.
+
+Also: eine billige Anschlagserkennung laeuft durch, und der teure Durchgang
+laeuft einmal pro angeschlagenem Ton. Bei acht Toenen pro Sekunde sind das
+acht mal 18 ms, also gut ein Zehntel eines Kerns. Das traegt.

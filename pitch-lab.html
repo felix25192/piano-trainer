@@ -139,6 +139,101 @@ for (const at of [0.05, 1, 3]) {
   html += `<h2>Fenster 8192, ${at} s nach dem Anschlag — ${r.correct}/30</h2>` + table(r.rows);
 }
 
+/*
+ * Die Suche einengen: nicht die ganze Klaviatur absuchen, sondern nur ein
+ * schmales Band um den Ton, den die App ohnehin erwartet. Kostet das wirklich
+ * so viel weniger - und was passiert, wenn der Spieler danebengreift?
+ */
+function narrow(length, atSeconds, offsetHalbtoene, bandCents = 100) {
+  let correct = 0, angenommen = 0, totalMs = 0, gefragt = 0;
+
+  for (const s of decoded) {
+    const slice = window_(s.mono, s.rate, atSeconds, length);
+    if (!slice) continue;
+
+    // Der Ton, den die App an dieser Stelle erwarten wuerde.
+    const erwartet = s.midi + offsetHalbtoene;
+    if (erwartet < 21 || erwartet > 108) continue;
+    gefragt++;
+
+    const hz = 440 * Math.pow(2, (erwartet - 69) / 12);
+    const t0 = performance.now();
+    const found = detectPitch(slice, s.rate, {
+      minHz: hz * Math.pow(2, -bandCents / 1200),
+      maxHz: hz * Math.pow(2, bandCents / 1200),
+    });
+    totalMs += performance.now() - t0;
+
+    if (!found) continue;
+    angenommen++;
+    if (frequencyToMidi(found.hz).midi === s.midi) correct++;
+  }
+
+  return {
+    gefragt,
+    angenommen,
+    correct,
+    msProDurchgang: Math.round((totalMs / Math.max(1, gefragt)) * 1000) / 1000,
+  };
+}
+
+/*
+ * Der Gegenversuch: voll erkennen, erst danach mit dem erwarteten Ton
+ * vergleichen. Langsamer, aber die Normierung bleibt dieselbe wie im
+ * Volldurchlauf.
+ */
+function broadThenCompare(length, atSeconds, offsetHalbtoene) {
+  let angenommen = 0, gefragt = 0, totalMs = 0;
+
+  for (const s of decoded) {
+    const slice = window_(s.mono, s.rate, atSeconds, length);
+    if (!slice) continue;
+    const erwartet = s.midi + offsetHalbtoene;
+    if (erwartet < 21 || erwartet > 108) continue;
+    gefragt++;
+
+    const t0 = performance.now();
+    const found = detectPitch(slice, s.rate);
+    totalMs += performance.now() - t0;
+
+    if (found && frequencyToMidi(found.hz).midi === erwartet) angenommen++;
+  }
+
+  return { gefragt, angenommen, msProDurchgang: Math.round((totalMs / Math.max(1, gefragt)) * 1000) / 1000 };
+}
+
+summary.push("");
+for (const band of [100, 50, 25]) {
+  const eng = narrow(8192, 0.05, 0, band);
+  summary.push(`Band +-${band} Cent, richtiger Ton: ${eng.correct}/${eng.gefragt} richtig, ${eng.msProDurchgang} ms`);
+}
+
+// Der Spieler greift daneben: erwartet wird ein Ton neben dem, was
+// tatsaechlich klingt. Wird das faelschlich angenommen?
+summary.push("");
+for (const band of [100, 50, 25]) {
+  const zeile = [[-12, "Okt tiefer"], [12, "Okt hoeher"], [1, "Halbton hoeher"], [-1, "Halbton tiefer"]]
+    .map(([offset, wie]) => {
+      const r = narrow(8192, 0.05, offset, band);
+      return `${wie} ${String(r.angenommen).padStart(2)}/${r.gefragt}`;
+    })
+    .join("   ");
+  summary.push(`Falsch angenommen bei Band +-${String(band).padStart(3)} Cent:  ${zeile}`);
+}
+
+summary.push("");
+{
+  const richtig = broadThenCompare(8192, 0.05, 0);
+  summary.push(`Voll erkennen, dann vergleichen — richtiger Ton: ${richtig.angenommen}/${richtig.gefragt}, ${richtig.msProDurchgang} ms`);
+  const zeile = [[-12, "Okt tiefer"], [12, "Okt hoeher"], [1, "Halbton hoeher"], [-1, "Halbton tiefer"]]
+    .map(([offset, wie]) => {
+      const r = broadThenCompare(8192, 0.05, offset);
+      return `${wie} ${String(r.angenommen).padStart(2)}/${r.gefragt}`;
+    })
+    .join("   ");
+  summary.push(`Voll erkennen, dann vergleichen — falsch angenommen:  ${zeile}`);
+}
+
 out.innerHTML = `<pre id="summary">${summary.join("\n")}</pre>` + html;
 </script>
 </body>

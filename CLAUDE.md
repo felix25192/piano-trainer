@@ -153,11 +153,23 @@ aim at and still leaves the eyes the work of finding it on the page.
 
   Two of the four failures are simply below the silence floor — measured at
   0.0014 and 0.0016 against a threshold of 0.002 — and both are above the top
-  of anything in the repertoire. What still has to be solved is speed: one
-  detection costs 14 ms at a 4096-sample window and 31 ms at 8192, which is far
-  too much to run continuously. The way out is that the app always knows which
-  note it expects, so the search can be narrowed to a few periods around it
-  instead of sweeping the whole keyboard.
+  of anything in the repertoire.
+
+  **Detect over the whole range, then compare with what was expected.** The
+  obvious shortcut — the app knows the note, so search only around it — was
+  measured and is wrong. It is four times faster and it waves through 24 of 26
+  octave errors, because a wave of period T also repeats at 2T, and 28 of 29
+  semitone errors, because YIN normalises against the range it is computed
+  over and a short range moves the threshold. Detecting broadly and comparing
+  afterwards costs 18 ms and refuses every one of those: 0 of 26, 0 of 26, 0 of
+  29, 0 of 29 across an octave up, an octave down, a semitone up and a semitone
+  down. For a trainer that is the difference between working and lying.
+
+  So speed is still open: 8 ms at a 4096-sample window, 18 ms at 8192, which is
+  too much to run on every frame. The way out is not a narrower search but a
+  rarer one — a cheap onset detector runs continuously and the expensive pass
+  runs once per struck note. The rig already says the onset is the only moment
+  worth asking about, so the two findings meet.
 - **Tied notes are asked for twice.** A tie is one sound, held, not struck
   again — but the matcher still requires the continuation note to be played.
   The data to fix it is already there and playback honours it
