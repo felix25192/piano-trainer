@@ -71,6 +71,9 @@ export default function App() {
       osmd.cursor.next();
       cursorIndexRef.current++;
     }
+    // Every re-render rebuilds the cursor element, so its stretch has to be
+    // reapplied. Doing it here means no render path can forget it.
+    stretchCursor(hostRef.current);
   }, []);
 
   /**
@@ -450,6 +453,41 @@ function tightenForScreen(osmd: OpenSheetMusicDisplay): void {
   rules.PageBottomMargin = 0;
   rules.PageLeftMargin = 0;
   rules.PageRightMargin = 0;
+}
+
+/**
+ * Stretches the cursor highlight to span the whole system.
+ *
+ * OSMD sizes it to the stave lines alone, so a note on a ledger line — the
+ * opening bass octave of the Moonlight Sonata, for one — sits outside the
+ * highlight and looks cut off. A fixed factor cannot fix that, because how far
+ * notes reach past the lines differs from piece to piece.
+ *
+ * So the size is measured instead: with the transform cleared, the element
+ * reports its natural height, and from that comes the factor that makes it
+ * cover the engraving from top to bottom. Scaling from the centre keeps the
+ * overhang even above and below.
+ *
+ * `transform` is the right property for this because OSMD rewrites the inline
+ * `top` and `left` on every cursor move but never touches it.
+ */
+function stretchCursor(host: HTMLElement | null): void {
+  const svg = host?.querySelector("svg");
+  const cursor = host?.querySelector<HTMLElement>('img[id^="cursorImg"]');
+  if (!svg || !cursor) return;
+
+  cursor.style.transform = "none";
+
+  const sheet = svg.getBoundingClientRect();
+  const bar = cursor.getBoundingClientRect();
+  if (bar.height <= 0 || sheet.height <= 0) return;
+
+  const centre = bar.top + bar.height / 2 - sheet.top;
+  // From the centre, reach whichever edge of the system is further away.
+  const reach = Math.max(centre, sheet.height - centre);
+  const scale = clamp((reach * 2) / bar.height, 1, 4);
+
+  cursor.style.transform = `scaleY(${scale.toFixed(3)})`;
 }
 
 function clamp(v: number, lo: number, hi: number): number {

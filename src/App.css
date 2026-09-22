@@ -118,6 +118,17 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
 
 .scroller > div { height: 100%; }
 
+/**
+ * The highlight glides rather than jumping, which makes it much easier to
+ * follow with the eye. Its vertical stretch is set from code — see
+ * stretchCursor() — because how far notes reach past the stave lines depends
+ * on the piece.
+ */
+.scroller img[id^="cursorImg"] {
+  transform-origin: center center;
+  transition: left 120ms ease-out;
+}
+
 /* ---------- placeholder controls, until the piano drives this ---------- */
 
 .actions {

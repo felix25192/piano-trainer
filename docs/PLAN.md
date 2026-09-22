@@ -358,3 +358,28 @@ Noten, exakt auf der Mitte, vor dem Anfang, hinter dem Ende, und auf einen
 Akkord, dessen Toene alle an derselben Stelle sitzen.
 
 53 Tests, alle gruen.
+
+## Der Cursor deckt jetzt das ganze System ab (22.09.2026)
+
+OSMD bemisst den Markierungsbalken allein an den Notenlinien. Noten auf
+Hilfslinien — die Bassoktave am Anfang der Mondscheinsonate zum Beispiel —
+lagen dadurch ausserhalb und sahen abgeschnitten aus.
+
+Ein fester Vergroesserungsfaktor loest das nicht, weil von Stueck zu Stueck
+verschieden ist, wie weit Noten ueber die Linien hinausreichen. `stretchCursor()`
+misst daher: Transform loeschen, natuerliche Hoehe ablesen, daraus den Faktor
+berechnen, der das gesamte System abdeckt. Skaliert wird um die Mitte, damit
+der Ueberstand oben und unten gleich ausfaellt.
+
+Nachgemessen mit `svg.getBBox()`: Die Zeichenflaeche ist ueber das ganze
+Stueck hinweg eng an den Inhalt gelegt. Volle Systemhoehe ist also nicht zu
+viel, sondern das Minimum, bei dem an keiner Stelle des Stuecks eine Note
+herausragt. Lokal wirkt der Balken dadurch hoeher als noetig — dafuer bleibt
+er konstant, statt bei jedem Schritt zu zappeln.
+
+Umgesetzt ueber `transform`, weil OSMD bei jeder Cursorbewegung `top` und
+`left` neu schreibt, `transform` aber unberuehrt laesst. Der Aufruf sitzt in
+`restoreCursor()`, damit kein Zeichenpfad ihn vergessen kann.
+
+Dazu ein weicher Uebergang der Position (120ms), der dem Auge das Folgen
+erleichtert.
