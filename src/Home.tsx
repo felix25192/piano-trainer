@@ -80,7 +80,7 @@ const MODES: Mode[] = [
     id: null,
     title: "Mit dem Mikrofon",
     hint:
-      "Üben ohne Kabel — noch nicht gebaut. Hier geht es zum Gerätetest, der prüft, ob dieses Gerät überhaupt mithören kann.",
+      "Üben ohne Kabel: das Mikrofon hört beim Spielen mit — der Knopf dafür sitzt unten in den Noten. Einstimmig, Akkorde noch nicht. Hier geht es zum Gerätetest.",
     icon: micIcon,
     // BASE_URL is "/" in development and "/piano-trainer/" in the build.
     href: `${import.meta.env.BASE_URL}mic-test.html`,

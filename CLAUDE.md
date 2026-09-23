@@ -46,9 +46,13 @@ src/Home.tsx    The start screen. Reports which mode was tapped; knows
 - `core/pitchDetect.ts` — YIN: samples in, one frequency out. Monophonic
 - `core/audioMode.ts` — the rule that playing and listening cannot both hold
   the device
+- `core/onset.ts` — notices a strike, cheaply, so the costly part runs rarely
 - `core/NoteOutput.ts` — **the port** every sound output implements
 - `adapters/osmdScore.ts` — the only file allowed to know OSMD's object graph
-- `adapters/MidiInput.ts` — Web MIDI (desktop only; Safari has none)
+- `adapters/MidiInput.ts` — Web MIDI (desktop only; Safari has none, and
+  there is no Mac to build a native wrapper with, so it will never reach the
+  iPad)
+- `adapters/MicInput.ts` — the microphone: strike, then pitch. Monophonic
 - `adapters/audioSession.ts` — **the only file that touches the device's
   audio**: the context, the session category, the microphone
 - `adapters/SampledPiano.ts` — Web Audio, recordings of a real piano
@@ -106,6 +110,10 @@ or call `getUserMedia`. One grep keeps that honest:
 ```bash
 grep -rn "new AudioContext\|getUserMedia\|audioSession.type" src mic-test.html
 ```
+
+Two hits are allowed, and both only ask whether the browser has the thing at
+all without touching it: the environment card in `mic-test.html`, and
+`MicInput.isSupported`. Anything else is a bug.
 
 This was learnt the hard way. Three places each took the device on their own,
 and a day went on fixes that each broke the one before: releasing the
@@ -176,6 +184,22 @@ most piano music lives, and a recording is polyphonic besides. A single note
 played into the room is the case that matters, and a single note is what
 works.
 
+**The microphone plays the app.** A button in the bar under the score hands
+the engine over to it, and a note played into the room then moves the
+highlight on exactly as a tapped button does — the `NoteInputSource` port
+makes them indistinguishable. Monophonic, which covers scales, arpeggios,
+five-finger exercises and any single line; chords are the harder problem and
+are not done.
+
+It listens for the *strike*, not for what is ringing. `core/onset.ts` watches
+the loudness a hundred times a second, which is cheap, and only when it says a
+key was hit does the eight-millisecond pitch detection run. That is not a
+saving but the whole design: a note is recognised 28 times out of 30 in the
+first fifty milliseconds and 15 out of 30 three seconds later.
+
+Listening and playing back can never both hold the device, and the buttons say
+so — each greys the other out while it runs.
+
 The expected notes are deliberately **not** displayed. Naming them turns the
 exercise into reading text. A wrong note turns the highlight red instead.
 Playing them back is the deliberate exception: it gives the ear something to
@@ -187,12 +211,17 @@ aim at and still leaves the eyes the work of finding it on the page.
   Launched from the home screen it is still untested, which is where the
   [long-standing WebKit bug](https://bugs.webkit.org/show_bug.cgi?id=185448)
   would bite if it bites at all.
-- **MicInput**: the large remaining adapter. Verification against expected
-  notes, not polyphonic transcription — that distinction is what makes it
-  feasible at all. The start screen already lists it as a third card, greyed
-  out and labelled as unbuilt.
+- **Chords through the microphone.** `MicInput` is built and monophonic, which
+  is stage one and covers every single line the exercise generator makes. Two
+  notes at once is stage two: not "what is playing", which is unsolved, but
+  "are the expected notes there and is nothing foreign among them". Weeks, and
+  the adversaries are the pedal, the chord still ringing from before, and the
+  partials of a low note landing exactly where a higher expected note sits.
+- **The microphone has never heard a real piano.** Everything measured so far
+  was a recording pushed through the detector, or a hummed note. The level,
+  the room and the attack of an actual instrument are unmeasured.
 
-  The detector exists and is measured. Against the thirty recordings it gets
+  The detector is measured against recordings. Against the thirty recordings it gets
   **28 of 30 right in the first 50 ms after the strike**, and falls to 15 of 30
   three seconds later — a piano's fundamental dies before its partials do, and
   a low F sharp then reads an octave high. So the microphone path has to catch

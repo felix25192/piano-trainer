@@ -240,10 +240,20 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
 
 .secondary { width: var(--touch); flex: none; font-size: 18px !important; }
 
-/* Playback running: the same button now stops it, and says so. */
+/* Playing back, or listening: the same button stops what it started. */
 .actions .secondary.on {
   background: var(--accent);
   color: #fff;
+}
+
+.actions .glyph {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* ---------- settings ---------- */

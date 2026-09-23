@@ -18,6 +18,7 @@ import { keyOf, type Key, type Letter } from "./core/theory";
 import { buildSchedule, stepAtTime, type Schedule } from "./core/playback";
 import type { NoteOutput } from "./core/NoteOutput";
 import { SampledPiano } from "./adapters/SampledPiano";
+import { MicInput } from "./adapters/MicInput";
 import { isAudioSupported } from "./adapters/audioSession";
 import Home, { type ModeId } from "./Home";
 import "./App.css";
@@ -28,9 +29,13 @@ import "./App.css";
  *
  * While practising, the screen is never touched — both hands are on the keys
  * and the instrument drives the app. So the score gets the room and the
- * controls stay out of the way. The two buttons at the bottom stand in for an
- * instrument until MidiInput is wired up; they call the same `play()` a real
- * adapter will, which is what the NoteInputSource port buys us.
+ * controls stay out of the way.
+ *
+ * The microphone does the driving now. The two buttons beside it still stand
+ * in for an instrument and are worth keeping: they call the same `play()`,
+ * which is exactly what the NoteInputSource port is for — from there down
+ * nothing can tell a tapped button from an inferred pitch or from a key press
+ * over a cable.
  */
 
 /**
@@ -258,6 +263,10 @@ export default function App() {
   const followRef = useRef<ReturnType<typeof setInterval> | null>(null);
   /** Wall clock at the start of playback, to notice an audio clock that stops. */
   const startedWallRef = useRef(0);
+  /** The microphone, built on the first tap and kept afterwards. */
+  const micRef = useRef<MicInput | null>(null);
+  /** Unsubscribes the engine from the microphone. */
+  const unlistenRef = useRef<(() => void) | null>(null);
 
   const [view, setView] = useState<View>("home");
   const [selected, setSelected] = useState<Selection>(BUNDLED[0]);
@@ -285,6 +294,13 @@ export default function App() {
    */
   const [playback, setPlayback] = useState<"idle" | "loading" | "playing">("idle");
   const [audioError, setAudioError] = useState<string | null>(null);
+  /**
+   * Whether the microphone is driving the engine.
+   *
+   * Never true at the same time as playback: the device has one audio
+   * session and the two need different categories — see core/audioMode.
+   */
+  const [listening, setListening] = useState(false);
   const [tempoFactor, setTempoFactor] = useState(1);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState<string | null>(null);
@@ -361,6 +377,13 @@ export default function App() {
     setPlayback("idle");
   }, []);
 
+  const stopListening = useCallback(() => {
+    unlistenRef.current?.();
+    unlistenRef.current = null;
+    micRef.current?.stop();
+    setListening(false);
+  }, []);
+
   /**
    * Keeps the highlight on the note being heard.
    *
@@ -418,6 +441,9 @@ export default function App() {
       if (followRef.current !== null) clearInterval(followRef.current);
       outputRef.current?.dispose();
       outputRef.current = null;
+      unlistenRef.current?.();
+      micRef.current?.stop();
+      micRef.current = null;
     };
   }, []);
 
@@ -438,12 +464,13 @@ export default function App() {
   /** Leaves the score, keeping the bar it stood on for the way back. */
   const goHome = useCallback(() => {
     stopPlayback();
+    stopListening();
     const step = matcherRef.current?.progress.stepIndex;
     resumeStepRef.current = step === undefined ? null : { key: selected.key, step };
     setSheet(null);
     setResumable(true);
     setView("home");
-  }, [selected.key, stopPlayback]);
+  }, [selected.key, stopPlayback, stopListening]);
 
   /**
    * A card on the home screen opens the score with the matching panel already
@@ -742,6 +769,7 @@ export default function App() {
   const pieceLabel = selected.label;
   const busy = status !== "bereit";
   const audioSupported = isAudioSupported();
+  const micSupported = MicInput.isSupported();
   const playing = playback !== "idle";
   /**
    * The tempo in force where the highlight stands, so the setting can name
@@ -773,6 +801,10 @@ export default function App() {
     const matcher = matcherRef.current;
     if (!score || !matcher) return;
 
+    // The two cannot both hold the device, so asking to hear the passage means
+    // giving up listening for it.
+    stopListening();
+
     const schedule = buildSchedule(score, matcher.progress.stepIndex, tempoFactor);
     if (schedule.notes.length === 0) return;
 
@@ -800,6 +832,37 @@ export default function App() {
     startedWallRef.current = performance.now();
     follow();
     followRef.current = setInterval(follow, FOLLOW_MS);
+  }
+
+  /**
+   * Hands the engine over to the microphone, or takes it back.
+   *
+   * Every note it hears goes through the same `play()` the two placeholder
+   * buttons use, which is the whole point of the `NoteInputSource` port: from
+   * here down nothing can tell an inferred pitch from a tapped button, or from
+   * a key press over a cable.
+   */
+  async function toggleListen() {
+    if (listening) {
+      stopListening();
+      return;
+    }
+
+    stopPlayback();
+    setAudioError(null);
+
+    micRef.current ??= new MicInput();
+    const mic = micRef.current;
+
+    try {
+      await mic.start();
+    } catch (e: unknown) {
+      setAudioError(describeError(e));
+      return;
+    }
+
+    unlistenRef.current = mic.onNoteOn((note) => play(note.midi));
+    setListening(true);
   }
 
   /** Changing the speed mid-passage would need a new schedule; simpler to stop. */
@@ -990,6 +1053,25 @@ export default function App() {
         >
           {playback === "playing" ? "■" : playback === "loading" ? "…" : "▶"}
         </button>
+        {/*
+          The microphone drives the engine directly. Monophonic for now, which
+          covers scales, arpeggios and any single line — chords are a different
+          and much harder problem.
+        */}
+        {micSupported && (
+          <button
+            className={"secondary" + (listening ? " on" : "")}
+            onClick={toggleListen}
+            aria-label={listening ? "Mikrofon ausschalten" : "Mit dem Mikrofon spielen"}
+            disabled={busy || playing}
+          >
+            <svg viewBox="0 0 24 24" className="glyph" aria-hidden="true">
+              <rect x="9" y="3" width="6" height="11" rx="3" />
+              <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0" />
+              <path d="M12 18v3" />
+            </svg>
+          </button>
+        )}
         <button
           className="primary"
           onClick={playCorrect}

@@ -1066,3 +1066,57 @@ eine Runde, nicht als sechs einzelne Beschwerden.
 Das ist die eigentliche Lehre des Tages, und sie ist prozessual, nicht
 technisch: eine Reparatur, die nur gegen ihr eigenes Symptom geprueft wird,
 ist kein Fortschritt, sondern eine Verschiebung.
+
+## Das Mikrofon spielt die App, einstimmig (23.09.2026)
+
+Stufe 1 steht: ein Ton ins Zimmer gespielt schiebt die Noten weiter. Damit
+erfuellt die App ihren Zweck ohne Kabel, ohne Mac und ohne irgendetwas
+anzuschliessen - was nach dem Befund "kein Mac verfuegbar" nicht der Umweg ist,
+sondern der Weg.
+
+### Zwei Haelften, und nur eine laeuft dauernd
+
+`core/onset.ts` hoert den **Anschlag**. Es sieht eine Zahl pro Bild, die
+Lautstaerke, und sagt, ob gerade angeschlagen wurde. Das ist billig und laeuft
+hundertmal in der Sekunde. Erst wenn es ja sagt, laeuft die
+Tonhoehenerkennung, und die kostet acht Millisekunden.
+
+Keine Sparmassnahme, sondern direkt aus dem Pruefstand: ein Ton wird in den
+ersten fuenfzig Millisekunden 28 von 30 Mal erkannt und nach drei Sekunden nur
+noch 15 von 30, weil der Grundton vor seinen Teiltoenen stirbt. Der Anschlag
+ist der einzige Moment, in dem sich Fragen lohnt - und zufaellig genau das, was
+die Engine wissen will, denn die fragt, ob gespielt wurde, nie was noch klingt.
+
+Die Schwelle ist ein Verhaeltnis und keine Differenz: ein Klavier deckt einen
+enormen Lautstaerkebereich ab, und ein fester Abstand wuerde entweder leises
+Spiel verschlucken oder bei lautem dauernd ausloesen. Dazu eine Mindestpause
+von 70 ms, weil ein Hammerschlag keine saubere Stufe ist, sondern nachschwingt
+und die Schwelle sonst mehrfach reisst. Sechzehntel bei 160 sind ein Ton alle
+94 ms; darunter muss die Pause bleiben, und ein Test haelt das fest.
+
+### Ein Test hatte unrecht, nicht der Detektor
+
+Beim Schreiben fiel ein Test um: zwei Anschlaege 70 ms auseinander, der zweite
+wurde nicht erkannt. Die Ursache war der Test - er fuetterte die beiden Bilder
+direkt hintereinander, **ohne die dazwischen**. In einer echten Schleife faellt
+der Pegel in dieser Zeit ab, und genau davon lebt die Erkennung. Mit den
+Zwischenbildern stimmt es. Den Detektor dafuer aufzuweichen waere der falsche
+Weg gewesen; die Versuchung war da, weil ein umgefallener Test wie ein Fehler
+im Code aussieht.
+
+### Was in der Oberflaeche dazugehoert
+
+Zuhoeren und Vorspielen koennen das Geraet nicht beide halten. Das steht seit
+gestern in `core/audioMode.ts`, und jetzt sagen es auch die Knoepfe: jeder
+sperrt den anderen, solange er laeuft.
+
+Der Fehlerweg ist geprueft. Im Browserfenster ist das Mikrofon gesperrt, und
+die App zeigt "Permission denied" im Fehlerkasten statt abzustuerzen. Danach
+spielt sie unveraendert weiter: 47 Toene, Abstaende 0,476 und 0,238.
+
+### Was noch fehlt
+
+Akkorde - der Detektor ist einstimmig und bleibt es, mehrstimmig ist Stufe 2
+und ein anderes Problem. Und der Pegel am echten Instrument ist ungemessen:
+bisher wurde gesummt oder eine Aufnahme durchgeschickt.
+
