@@ -1,6 +1,6 @@
 # Projektplan
 
-Stand: 22.09.2026
+Stand: 23.09.2026
 
 > **Wie diese Datei zu lesen ist:** Unten stehen die Abschnitte in der
 > Reihenfolge ihrer Entstehung, jeder datiert. Zum Einsteigen reicht dieser
@@ -11,23 +11,40 @@ Stand: 22.09.2026
 
 **Fertig und im Einsatz.** Die App oeffnet auf einer Startseite, die den
 Modus waehlen laesst und das zuletzt geoeffnete Stueck zum Weitermachen
-anbietet. Noten laufen als eine horizontale Zeile durch,
-beide Schluessel, richtige Vorzeichen, Groesse passt sich der Bildschirmhoehe
-selbst an. Antippen setzt die Spielposition. Stueck und Takt sind aus der
-Kopfzeile waehlbar. Eigene MusicXML-Dateien lassen sich laden und bleiben
-erhalten. Sieben gestufte Stuecke sind dabei. Der Generator erzeugt
-Tonleitern, Arpeggien und Fuenf-Finger-Uebungen in vierundzwanzig Tonarten,
-ein bis vier Oktaven, parallel oder in Gegenbewegung.
+anbietet. Noten laufen als eine horizontale Zeile durch, beide Schluessel,
+richtige Vorzeichen, Groesse passt sich der Bildschirmhoehe selbst an.
+Antippen setzt die Spielposition. Stueck und Takt sind aus der Kopfzeile
+waehlbar. Eigene MusicXML-Dateien lassen sich laden und bleiben erhalten.
+Sieben gestufte Stuecke sind dabei. Der Generator erzeugt Tonleitern,
+Arpeggien und Fuenf-Finger-Uebungen in vierundzwanzig Tonarten, ein bis vier
+Oktaven, parallel oder in Gegenbewegung.
 
-Veroeffentlicht unter <https://felix25192.github.io/piano-trainer/>, bei
-jedem Push auf `main` automatisch aktualisiert. 160 Tests.
+Eine Stelle laesst sich ab der Markierung vorspielen, im Tempo der Noten, mit
+Aufnahmen eines echten Fluegels und dem Pedal, das in den Noten steht.
 
-Eine Stelle laesst sich ab der Markierung vorspielen, im Tempo der Noten,
-mit Aufnahmen eines echten Fluegels und dem Pedal, das in den Noten steht.
+**Und das Mikrofon spielt die App.** Ein Ton ins Zimmer gespielt schiebt die
+Noten weiter - einstimmig, also Tonleitern, Arpeggien und jede einzelne
+Linie. Spike A ist in Safari auf dem iPad bestanden, gemessen und nicht
+vermutet.
 
-**Als Naechstes.** Spike A, sobald iPad und Klavier zusammen verfuegbar sind.
-Danach MicInput, der dickste verbleibende Brocken. Die offenen Punkte im
-Einzelnen stehen in `CLAUDE.md`.
+Veroeffentlicht unter <https://felix25192.github.io/piano-trainer/>, bei jedem
+Push auf `main` automatisch aktualisiert. 221 Tests.
+
+**Als Naechstes.** Der Mikrofonknopf ist gebaut und ausgeliefert, aber am
+Instrument noch nie ausprobiert - das ist der offene Faden. Bisher wurde
+gesummt und es wurden Aufnahmen durch den Detektor geschickt. Zu klaeren ist
+nur eines: geht die Markierung gar nicht weiter, oder springt sie an falsche
+Stellen? Das erste heisst, die Anschlagserkennung sieht zu wenig, das zweite,
+sie sieht zu viel; gedreht wird dann an `rise`, `gap` und `floor` in
+`core/onset.ts`.
+
+Danach der Reihe nach: Akkorde ueber das Mikrofon (Stufe 2, Wochen), ein
+Service Worker gegen den schwarzen Bildschirm nach jedem Deploy, und die
+gebundenen Toene, die der Matcher noch zweimal verlangt.
+
+**Nativ ist gestrichen.** Es gibt keinen Mac, iOS-Builds brauchen aber macOS
+und Xcode. Damit wird es auf dem iPad nie MIDI geben, denn Safari kann kein
+Web MIDI. Das Mikrofon ist nicht der Umweg, sondern der Weg.
 
 **Noch nie getestet:** die App am echten Instrument. Bis das passiert ist,
 sind alle Aussagen ueber das Spielgefuehl Vermutungen.
