@@ -28,7 +28,7 @@ Linie. Spike A ist in Safari auf dem iPad bestanden, gemessen und nicht
 vermutet.
 
 Veroeffentlicht unter <https://felix25192.github.io/piano-trainer/>, bei jedem
-Push auf `main` automatisch aktualisiert. 247 Tests.
+Push auf `main` automatisch aktualisiert. 259 Tests.
 
 **Als Naechstes.** Der Mikrofonknopf ist gebaut, aber am Instrument noch nie
 ausprobiert - das ist der offene Faden. Am 24.09. hat sich gezeigt, dass er in
@@ -38,10 +38,11 @@ dem Tag. Fuer den Test am Instrument gibt es das Anschlagsprotokoll in den
 Einstellungen: es sagt bei jedem Anschlag, was gehoert wurde, und macht aus
 "geht nicht" eine Zahl.
 
-Beschlossen am 24.09., der Reihe nach: Haende getrennt ueben (sonst hat das
-Mikrofon nichts Einstimmiges zu hoeren), gebundene Toene nicht mehr zweimal
-verlangen, ein Service Worker gegen den schwarzen Bildschirm nach jedem Deploy.
-Danach Akkorde ueber das Mikrofon (Stufe 2, Wochen).
+Seit dem 24.09. lassen sich die Haende getrennt ueben - mit dem Mikrofon der
+einzige Weg, denn beide Haende zusammen sind ein Akkord -, und gebundene Toene
+werden nur noch einmal verlangt. Als Naechstes ein Service Worker gegen den
+schwarzen Bildschirm nach jedem Deploy, danach Akkorde ueber das Mikrofon
+(Stufe 2, Wochen).
 
 **Nativ ist gestrichen.** Es gibt keinen Mac, iOS-Builds brauchen aber macOS
 und Xcode. Damit wird es auf dem iPad nie MIDI geben, denn Safari kann kein
@@ -1247,3 +1248,49 @@ eine Frequenz hat keine Schreibweise.
 Und weiterhin: ein echtes Instrument hat das Mikrofon nie gehoert.
 Lautsprecher und Hall eines Digitalpianos machen das Legato eher schwerer als
 die Aufnahmen.
+
+## Was der Matcher verlangt: eine Hand, und eine Bindung nur einmal (24.09.2026)
+
+Zwei Entscheidungen, die beide dieselbe Frage beantworten - was an einem
+Schritt angeschlagen werden muss -, und deshalb eine Regel:
+`demandedPitches` in `core/score.ts`. Matcher und Taktliste benutzen sie
+beide, damit die Taktliste keinen Takt anbietet, in dem die gewaehlte Hand
+nichts zu tun hat.
+
+### Haende getrennt
+
+Aufgefallen beim Pruefen des Mikrofons: jede Uebung des Generators und jedes
+Stueck ist zweihaendig, jeder Schritt also ein Akkord. Mit beiden Haenden blieb
+die Markierung schon beim zweiten Schritt haengen. Ein Schalter in der
+Kopfzeile - beide, rechte, linke Hand, ein Tipp schaltet weiter - und die andere
+Hand wird nicht mehr verlangt. In der Kopfzeile und nicht in den
+Einstellungen, weil beim Einstudieren staendig gewechselt wird.
+
+Rechts heisst oberes System, links alles darunter. Das ist die Antwort der
+Notation, nicht der Anatomie: eine Note, die ins andere System hinuebergeschrieben
+ist, folgt dem System. Geuebt wird aber Lesen, und gelesen wird das System.
+
+Ein Ton der anderen Hand, der an dieser Stelle steht, wird durchgelassen statt
+rot gewertet: er ist nicht verlangt, aber auch kein Lesefehler. Ein Ton, der
+hier nirgends steht, bleibt falsch.
+
+Nachgemessen durch die echte App, mit Aufnahmen statt Mikrofon: C-Dur ueber
+eine Oktave auf und ab im Legato, 15 von 15 mit der rechten Hand, 15 von 15 mit
+der linken.
+
+### Gebundene Toene
+
+Eine Bindung ist ein Klang. Sie noch einmal anzuschlagen ist am Klavier hoerbar
+etwas anderes, und mit dem Mikrofon koennte die App es nicht einmal verlangen:
+eine gehaltene Taste macht keinen neuen Anschlag. Der Matcher verlangt den Ton
+jetzt nur dort, wo er angeschlagen wird; ein Schritt, der nur aus gehaltenen
+Toenen besteht, wird uebergangen wie eine Pause.
+
+Wer den gebundenen Ton trotzdem noch einmal anschlaegt, sieht rot. Beschlossen,
+weil die Bindung zu sehen zum Notenlesen gehoert und sie zu uebersehen genau
+die Art Fehler ist, fuer die das Rot da ist.
+
+Die Ausnahme ist der Einstieg mitten in einer Bindung - per Antippen, per
+Taktwahl, oder wo eine vorgespielte Stelle aufhoerte. Dann klingt noch nichts,
+und wer dort einsetzt, schlaegt den Ton an. Der Matcher merkt sich dafuer, ob
+die Position gesetzt oder erspielt wurde.

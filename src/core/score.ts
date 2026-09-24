@@ -19,10 +19,9 @@ export interface ExpectedNote {
   /**
    * True when the note is only held over from a tie and is not struck here.
    *
-   * Playback has to skip these or a tied note would be hammered again in the
-   * middle of its own length. The matcher, for now, does not — it still asks
-   * for the key to be pressed a second time, which is wrong on a piano and is
-   * noted as open in CLAUDE.md.
+   * Playback skips these, or a tied note would be hammered again in the middle
+   * of its own length, and the matcher does not ask for them — see
+   * `demandedPitches` for the one exception.
    */
   heldOver: boolean;
 }
@@ -63,14 +62,38 @@ export interface Score {
   steps: ScoreStep[];
 }
 
-/** All distinct MIDI numbers a step requires. */
-export function requiredPitches(step: ScoreStep): number[] {
-  return [...new Set(step.notes.map((n) => n.midi))].sort((a, b) => a - b);
+/**
+ * Which hands are being practised.
+ *
+ * The right hand is the upper staff and the left everything below it. That is
+ * the notation's answer rather than the anatomy's — a note written across in
+ * the other staff follows the staff — but it is what the eye reads, and
+ * reading is what is practised.
+ */
+export type Hands = "both" | "right" | "left";
+
+/** Whether a note belongs to the hands being practised. */
+export function inHands(note: ExpectedNote, hands: Hands): boolean {
+  if (hands === "both") return true;
+  return hands === "right" ? note.staff === 1 : note.staff !== 1;
 }
 
-/** A rest, or a step that carries no playable note. */
-export function isSilent(step: ScoreStep): boolean {
-  return step.notes.length === 0;
+/**
+ * The keys a step asks the player to strike, lowest first.
+ *
+ * Only the chosen hands, and only what is struck here: a note held over from a
+ * tie is one sound that is already sounding, and asking for it again would
+ * teach the hand to strike it twice. It also could not be heard — a held key
+ * makes no new strike for the microphone to notice.
+ *
+ * The exception is `entering`, the step the position was put on rather than
+ * played to: after a tap, a jump to a bar or the end of a passage played back,
+ * nothing is sounding yet, and whoever starts in the middle of a tie strikes
+ * the note.
+ */
+export function demandedPitches(step: ScoreStep, hands: Hands = "both", entering = false): number[] {
+  const struck = step.notes.filter((n) => inHands(n, hands) && (entering || !n.heldOver));
+  return [...new Set(struck.map((n) => n.midi))].sort((a, b) => a - b);
 }
 
 /** Steps belonging to a measure range, inclusive. Used for section practice. */

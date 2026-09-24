@@ -309,3 +309,155 @@ describe("the opening of the Moonlight Sonata", () => {
     expect(matcher.noteOn(played(61)).kind).toBe("advanced");
   });
 });
+
+/** A step with notes spelled out, for the cases where staff and ties matter. */
+function stepWith(index: number, measure: number, notes: ScoreStep["notes"]): ScoreStep {
+  return { index, measure, notes, onset: index * 0.25, bpm: 60, pedalUntil: null };
+}
+
+function note(midi: number, staff = 1, heldOver = false): ScoreStep["notes"][number] {
+  return { midi, staff, duration: 0.25, heldOver };
+}
+
+/*
+ * A tie is one sound, held. Striking it again is a different thing on a piano
+ * — audibly — and through the microphone it could not even be asked for: a
+ * held key makes no new strike to hear.
+ */
+describe("tied notes", () => {
+  // Bar 1: C4 tied over into the next step, then D4. Bar 2 opens with a tie
+  // held across the bar line from the E4 before it.
+  const score = scoreOf(
+    stepWith(0, 1, [note(60)]),
+    stepWith(1, 1, [note(60, 1, true)]),
+    stepWith(2, 1, [note(62)]),
+    stepWith(3, 1, [note(64)]),
+    stepWith(4, 2, [note(64, 1, true)]),
+    stepWith(5, 2, [note(65)]),
+  );
+
+  it("does not ask again for a note held over from a tie", () => {
+    const matcher = new NoteMatcher(score);
+    expect(matcher.noteOn(played(60))).toMatchObject({ kind: "advanced" });
+    expect(matcher.currentStep?.index).toBe(2);
+    expect(matcher.remaining).toEqual([62]);
+  });
+
+  it("counts the tied note struck again as a misreading", () => {
+    const matcher = new NoteMatcher(score);
+    matcher.noteOn(played(60));
+    expect(matcher.noteOn(played(60)).kind).toBe("wrong");
+    expect(matcher.hasError).toBe(true);
+  });
+
+  it("asks only for what is new where a tie is held under it", () => {
+    const matcher = new NoteMatcher(
+      scoreOf(
+        stepWith(0, 1, [note(60), note(64)]),
+        stepWith(1, 1, [note(60, 1, true), note(67)]),
+      ),
+    );
+    matcher.noteOn(played(60));
+    matcher.noteOn(played(64));
+    expect(matcher.remaining).toEqual([67]);
+  });
+
+  /*
+   * Starting in the middle of a tie — by tapping it, or with a bar that opens
+   * on one — nothing is sounding yet. Whoever starts there strikes the note.
+   */
+  it("asks for the held note when practice starts in the middle of the tie", () => {
+    const matcher = new NoteMatcher(score);
+    matcher.seekToStep(1);
+    expect(matcher.remaining).toEqual([60]);
+    expect(matcher.noteOn(played(60)).kind).toBe("advanced");
+    expect(matcher.currentStep?.index).toBe(2);
+  });
+
+  it("asks for it too when a bar opens on a tie", () => {
+    const matcher = new NoteMatcher(score);
+    matcher.seekToMeasure(2);
+    expect(matcher.currentStep?.index).toBe(4);
+    expect(matcher.remaining).toEqual([64]);
+  });
+
+  it("goes back to passing it over once playing has moved on", () => {
+    const matcher = new NoteMatcher(score);
+    matcher.seekToStep(1);
+    matcher.noteOn(played(60));
+    matcher.noteOn(played(62));
+    // E4 is struck at step 3 and held into bar 2; the next thing asked is F4.
+    expect(matcher.noteOn(played(64))).toMatchObject({ kind: "advanced" });
+    expect(matcher.currentStep?.index).toBe(5);
+  });
+});
+
+/*
+ * Hands separately, the way a piece is learnt — and the only way the
+ * microphone can follow at all, since both hands together are a chord.
+ */
+describe("one hand at a time", () => {
+  // C4 over C3, then the left hand alone on D3, then E4 over E3.
+  const score = scoreOf(
+    stepWith(0, 1, [note(60, 1), note(48, 2)]),
+    stepWith(1, 1, [note(50, 2)]),
+    stepWith(2, 2, [note(64, 1), note(52, 2)]),
+  );
+
+  it("asks the right hand only for the upper staff", () => {
+    const matcher = new NoteMatcher(score, { hands: "right" });
+    expect(matcher.remaining).toEqual([60]);
+    expect(matcher.noteOn(played(60)).kind).toBe("advanced");
+    // Step 1 is the left hand's alone and is passed over like a rest.
+    expect(matcher.currentStep?.index).toBe(2);
+    expect(matcher.remaining).toEqual([64]);
+  });
+
+  it("asks the left hand for everything below it", () => {
+    const matcher = new NoteMatcher(score, { hands: "left" });
+    expect(matcher.remaining).toEqual([48]);
+    matcher.noteOn(played(48));
+    expect(matcher.remaining).toEqual([50]);
+    matcher.noteOn(played(50));
+    expect(matcher.remaining).toEqual([52]);
+  });
+
+  it("lets the other hand's written note pass without calling it wrong", () => {
+    const matcher = new NoteMatcher(score, { hands: "right" });
+    expect(matcher.noteOn(played(48))).toEqual({ kind: "ignored", reason: "other-hand" });
+    expect(matcher.hasError).toBe(false);
+    expect(matcher.currentStep?.index).toBe(0);
+  });
+
+  it("still calls a note written nowhere here wrong", () => {
+    const matcher = new NoteMatcher(score, { hands: "right" });
+    expect(matcher.noteOn(played(62)).kind).toBe("wrong");
+  });
+
+  it("keeps the place when the hands change, moving on only if it must", () => {
+    const matcher = new NoteMatcher(score);
+    matcher.noteOn(played(60));
+    matcher.noteOn(played(48));
+    expect(matcher.currentStep?.index).toBe(1);
+
+    // Step 1 has nothing for the right hand, so the right hand starts at 2.
+    matcher.setHands("right");
+    expect(matcher.currentStep?.index).toBe(2);
+
+    matcher.setHands("both");
+    expect(matcher.currentStep?.index).toBe(2);
+    expect(matcher.remaining).toEqual([52, 64]);
+  });
+
+  it("jumps to a bar where the chosen hand has something to do", () => {
+    const rightRests = scoreOf(
+      stepWith(0, 1, [note(48, 2)]),
+      stepWith(1, 2, [note(50, 2)]),
+      stepWith(2, 3, [note(64, 1), note(52, 2)]),
+    );
+    const matcher = new NoteMatcher(rightRests, { hands: "right" });
+    expect(matcher.currentStep?.index).toBe(2);
+    matcher.seekToMeasure(2);
+    expect(matcher.currentStep?.index).toBe(2);
+  });
+});

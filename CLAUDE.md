@@ -76,7 +76,7 @@ export PATH="/c/Program Files/nodejs:$PATH"
 ```
 
 ```bash
-npx vitest run          # 247 tests
+npx vitest run          # 259 tests
 npx tsc -b --noEmit     # types
 npx oxlint              # lint; silence means clean
 npm run build
@@ -156,7 +156,16 @@ Scores render as one continuous horizontal staff line, both clefs, correct
 accidentals, fitted to the viewport height automatically on every rotation —
 up to `ZOOM_FIT_MAX`, past which a single bar would fill the screen and there
 would be nothing ahead to read. Tapping the score sets the position. Piece and measure are chosen from the top
-bar. Own MusicXML files can be loaded and persist. Exercises are generated for
+bar, and so are the hands: both, right alone or left alone. With one hand
+chosen the other stays on the page and is simply not asked for — its notes,
+played anyway, are let through rather than marked wrong.
+
+A tied note is asked for once, where it is struck, and passed over where it
+is held: a tie is one sound. Striking it again counts as a misreading. The
+exception is starting in the middle of one — by tap, by bar, or where a
+passage played back stopped — since nothing is sounding yet; there it is
+asked for. `demandedPitches` in `core/score.ts` is that rule, and the
+matcher and the bar list both use it. Own MusicXML files can be loaded and persist. Exercises are generated for
 twelve major and twelve harmonic minor keys, one to four octaves, parallel or
 contrary motion, with fingerings for major.
 
@@ -200,11 +209,11 @@ works.
 the engine over to it, and a note played into the room then moves the
 highlight on exactly as a tapped button does — the `NoteInputSource` port
 makes them indistinguishable. Monophonic: one note at a time. Chords are the
-harder problem and are not done — and so, for now, is anything with both
-hands, since both hands sounding together are a chord too. Every exercise the
-generator makes and every bundled piece is written for both hands, so until
-hands can be practised separately there is nothing in the app the microphone
-can play in the ordinary way.
+harder problem and are not done — and both hands sounding together are a
+chord too. Every exercise and every bundled piece is written for both hands,
+so the microphone is played **one hand at a time**, chosen in the top bar.
+Through the real app, fed recordings, a C major scale up and down in legato
+came out 15 of 15 in either hand.
 
 It listens for the *strike*, not for what is ringing, and `core/hearing.ts` is
 the whole loop. A hundred times a second it asks two cheap questions — did it
@@ -242,8 +251,7 @@ aim at and still leaves the eyes the work of finding it on the page.
   [long-standing WebKit bug](https://bugs.webkit.org/show_bug.cgi?id=185448)
   would bite if it bites at all.
 - **Chords through the microphone.** `MicInput` is built and monophonic, which
-  is stage one and covers any single line — once one hand can be practised on
-  its own, see above. Legato with the pedal down is the same problem in small:
+  is stage one and covers any single line, one hand at a time. Legato with the pedal down is the same problem in small:
   12 of 26 second notes. Two
   notes at once is stage two: not "what is playing", which is unsolved, but
   "are the expected notes there and is nothing foreign among them". Weeks, and
@@ -281,12 +289,6 @@ aim at and still leaves the eyes the work of finding it on the page.
   rarer one — a cheap onset detector runs continuously and the expensive pass
   runs once per struck note. The rig already says the onset is the only moment
   worth asking about, so the two findings meet.
-- **Tied notes are asked for twice.** A tie is one sound, held, not struck
-  again — but the matcher still requires the continuation note to be played.
-  The data to fix it is already there and playback honours it
-  (`ExpectedNote.heldOver`); the matcher does not, because changing what the
-  app demands of the player is a decision of its own, not a side effect of
-  adding sound.
 - **A home-screen app goes black after a deploy.** Verified: each build emits a
   new hashed bundle and GitHub Pages deletes the old one, so a standalone web
   app holding a cached `index.html` asks for an asset that is now a 404, React

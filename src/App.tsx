@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { OpenSheetMusicDisplay } from "opensheetmusicdisplay";
 import { NoteMatcher } from "./core/NoteMatcher";
-import type { Score } from "./core/score";
+import { demandedPitches, type Hands, type Score } from "./core/score";
 import { extractScore, stepAtFraction } from "./adapters/osmdScore";
 import {
   addScore,
@@ -230,6 +230,14 @@ const TEMPO_FACTORS: Array<[number, string]> = [
   [1, "wie notiert"],
 ];
 
+const HANDS_LABELS: Record<Hands, string> = {
+  both: "beide Hände",
+  right: "rechte Hand",
+  left: "linke Hand",
+};
+
+const NEXT_HANDS: Record<Hands, Hands> = { both: "right", right: "left", left: "both" };
+
 /** One line of the strike protocol: what was heard, and what was wanted then. */
 interface ProtocolEntry {
   heard: Heard;
@@ -349,6 +357,15 @@ export default function App() {
    * default, and not remembered across a reload, so that practice never
    * starts with the answers showing.
    */
+  /**
+   * Which hands the engine asks for. Hands separately is how a piece is
+   * learnt, and it is also the only way the microphone can follow: both hands
+   * sounding together are a chord. Kept across pieces, since it is a way of
+   * practising and not a property of one score.
+   */
+  const [hands, setHandsState] = useState<Hands>("both");
+  const handsRef = useRef(hands);
+  handsRef.current = hands;
   const [protocolOn, setProtocolOn] = useState(false);
   const [protocol, setProtocol] = useState<ProtocolEntry[]>([]);
   const protocolOnRef = useRef(protocolOn);
@@ -650,7 +667,7 @@ export default function App() {
 
         const { score: extracted, anchors } = extractScore(osmd, selected.label, host);
 
-        const matcher = new NoteMatcher(extracted);
+        const matcher = new NoteMatcher(extracted, { hands: handsRef.current });
 
         // Same piece as before the home screen: carry on where it stood.
         const resumeAt = resumeStepRef.current;
@@ -739,12 +756,29 @@ export default function App() {
   }, [play]);
 
   const playWrong = useCallback(() => {
-    const expected = matcherRef.current?.remaining ?? [];
+    const matcher = matcherRef.current;
+    const expected = matcher?.remaining ?? [];
+    // Nothing written here at all, in either hand: the other hand's note
+    // would be let through rather than count as a mistake.
+    const written = matcher?.currentStep?.notes.map((n) => n.midi) ?? [];
     // A semitone off is the mistake a sight-reader actually makes.
     let candidate = (expected[0] ?? 60) + 1;
-    while (expected.includes(candidate)) candidate++;
+    while (written.includes(candidate)) candidate++;
     play(candidate);
   }, [play]);
+
+  /** Asks for other hands from here on, keeping the place. */
+  const changeHands = useCallback(
+    (next: Hands) => {
+      stopPlayback();
+      setHandsState(next);
+      matcherRef.current?.setHands(next);
+      restoreCursor();
+      scrollCursorIntoView(osmdRef.current, scrollRef.current, "smooth");
+      setTick((t) => t + 1);
+    },
+    [restoreCursor, stopPlayback],
+  );
 
   const restart = useCallback(() => {
     stopPlayback();
@@ -940,12 +974,13 @@ export default function App() {
    *
    * A piece can open with a bar of rests in one hand, and offering a jump to a
    * measure that needs no input would land the position somewhere else without
-   * explanation.
+   * explanation. With one hand practised, that goes for the other hand's bars
+   * too.
    */
   const measureNumbers = score
     ? [
         ...new Set(
-          score.steps.filter((s) => s.notes.length > 0).map((s) => s.measure),
+          score.steps.filter((s) => demandedPitches(s, hands, true).length > 0).map((s) => s.measure),
         ),
       ].sort((a, b) => a - b)
     : [];
@@ -1058,6 +1093,20 @@ export default function App() {
         >
           Takt {progress && !progress.finished ? progress.measure : "—"}
           <span className="caret">▾</span>
+        </button>
+
+        {/*
+          One tap cycles through the three. Hands separately gets switched
+          back and forth all the time while a passage is being learnt, so it
+          sits here with piece and measure rather than in the settings.
+        */}
+        <button
+          className="hands"
+          onClick={() => changeHands(NEXT_HANDS[hands])}
+          aria-label={`${HANDS_LABELS[hands]}, tippen für ${HANDS_LABELS[NEXT_HANDS[hands]]}`}
+          disabled={!score}
+        >
+          {HANDS_LABELS[hands]}
         </button>
         {/*
           The expected notes are deliberately NOT shown. Naming them turns the

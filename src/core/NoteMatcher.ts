@@ -1,5 +1,5 @@
 import type { PlayedNote } from "./NoteInputSource";
-import { isSilent, requiredPitches, type Score, type ScoreStep } from "./score";
+import { demandedPitches, inHands, type Hands, type Score, type ScoreStep } from "./score";
 
 /**
  * Decides whether what was played matches what the score asks for, and moves
@@ -8,6 +8,11 @@ import { isSilent, requiredPitches, type Score, type ScoreStep } from "./score";
  * Knows nothing about microphones, MIDI cables, OSMD or React. Everything it
  * needs arrives as a MIDI number; everything it reports leaves as an outcome
  * object. That is what makes it testable without a browser.
+ *
+ * What it asks for at a step is `demandedPitches` — the chosen hands, and
+ * only what is struck there. A step that asks for nothing is passed over the
+ * way a rest is, so the position never comes to a stop where there is nothing
+ * to do.
  */
 
 export type MatchOutcome =
@@ -17,8 +22,14 @@ export type MatchOutcome =
   | { kind: "advanced"; from: ScoreStep; to: ScoreStep | null }
   /** Note is not part of the current step. The position does not move. */
   | { kind: "wrong"; played: number; expected: number[] }
-  /** Nothing to do — already finished, duplicate press, or below the confidence floor. */
-  | { kind: "ignored"; reason: "finished" | "duplicate" | "low-confidence" };
+  /**
+   * Nothing to do — already finished, a duplicate press, below the confidence
+   * floor, or a note the other hand has here while only one is practised.
+   */
+  | {
+      kind: "ignored";
+      reason: "finished" | "duplicate" | "low-confidence" | "other-hand";
+    };
 
 export interface MatcherOptions {
   /**
@@ -26,6 +37,8 @@ export interface MatcherOptions {
    * keyboard always reports 1, so this only ever affects the microphone.
    */
   minConfidence?: number;
+  /** Which hands are asked for. Both, unless one is being practised alone. */
+  hands?: Hands;
 }
 
 export interface MatcherProgress {
@@ -42,15 +55,23 @@ export interface MatcherProgress {
 export class NoteMatcher {
   private readonly score: Score;
   private readonly minConfidence: number;
+  private hands: Hands;
 
   private position = 0;
   private satisfied = new Set<number>();
   private error = false;
+  /**
+   * True while the position stands where it was put, rather than where
+   * playing brought it. Only then is a note held over from a tie asked for —
+   * nothing is sounding yet to hold.
+   */
+  private entering = true;
 
   constructor(score: Score, options: MatcherOptions = {}) {
     this.score = score;
     this.minConfidence = options.minConfidence ?? 0;
-    this.position = this.skipSilent(0);
+    this.hands = options.hands ?? "both";
+    this.position = this.skipIdle(0);
   }
 
   /** The step awaiting input, or null once the piece is done. */
@@ -70,7 +91,7 @@ export class NoteMatcher {
   get remaining(): number[] {
     const step = this.currentStep;
     if (!step) return [];
-    return requiredPitches(step).filter((m) => !this.satisfied.has(m));
+    return this.demanded(step).filter((m) => !this.satisfied.has(m));
   }
 
   get progress(): MatcherProgress {
@@ -93,9 +114,18 @@ export class NoteMatcher {
     const step = this.currentStep;
     if (!step) return { kind: "ignored", reason: "finished" };
 
-    const expected = requiredPitches(step);
+    const expected = this.demanded(step);
 
     if (!expected.includes(note.midi)) {
+      /*
+       * The other hand's note, written right here, while one hand is being
+       * practised: not what is asked for, but not a misreading either. A tied
+       * note struck again is different — it is in the hand being practised,
+       * and not seeing the tie is exactly the kind of mistake the red is for.
+       */
+      if (step.notes.some((n) => n.midi === note.midi && !inHands(n, this.hands))) {
+        return { kind: "ignored", reason: "other-hand" };
+      }
       this.error = true;
       return { kind: "wrong", played: note.midi, expected };
     }
@@ -111,16 +141,26 @@ export class NoteMatcher {
     const remaining = this.remaining;
     if (remaining.length > 0) return { kind: "progress", remaining };
 
-    this.position = this.skipSilent(this.position + 1);
+    this.entering = false;
+    this.position = this.skipIdle(this.position + 1);
     this.satisfied = new Set();
     return { kind: "advanced", from: step, to: this.currentStep };
   }
 
   /** Back to the beginning. */
   reset(): void {
-    this.position = this.skipSilent(0);
-    this.satisfied = new Set();
-    this.error = false;
+    this.enter(0);
+  }
+
+  /**
+   * Changes which hands are asked for, keeping the place.
+   *
+   * If the other hand was all that happened here, the position moves on to
+   * where the chosen one has something to do.
+   */
+  setHands(hands: Hands): void {
+    this.hands = hands;
+    this.enter(this.position);
   }
 
   /**
@@ -129,11 +169,9 @@ export class NoteMatcher {
    */
   seekToMeasure(measure: number): void {
     const index = this.score.steps.findIndex(
-      (s) => s.measure >= measure && !isSilent(s),
+      (s) => s.measure >= measure && demandedPitches(s, this.hands, true).length > 0,
     );
-    this.position = index === -1 ? this.score.steps.length : index;
-    this.satisfied = new Set();
-    this.error = false;
+    this.enter(index === -1 ? this.score.steps.length : index);
   }
 
   /**
@@ -146,22 +184,30 @@ export class NoteMatcher {
    * stop somewhere that needs no input.
    */
   seekToStep(index: number): void {
-    const clamped = Math.min(
-      Math.max(Math.round(index), 0),
-      this.score.steps.length,
-    );
-    this.position = this.skipSilent(clamped);
+    const clamped = Math.min(Math.max(Math.round(index), 0), this.score.steps.length);
+    this.enter(clamped);
+  }
+
+  /** Puts the position somewhere, as opposed to playing it there. */
+  private enter(index: number): void {
+    this.entering = true;
+    this.position = this.skipIdle(index);
     this.satisfied = new Set();
     this.error = false;
   }
 
+  private demanded(step: ScoreStep): number[] {
+    return demandedPitches(step, this.hands, this.entering);
+  }
+
   /**
-   * Rests need no input, so the position never comes to a stop on one.
+   * Steps that ask for nothing — rests, the other hand's notes, a tie being
+   * held — need no input, so the position never comes to a stop on one.
    * Skipping them here keeps that rule in a single place.
    */
-  private skipSilent(from: number): number {
+  private skipIdle(from: number): number {
     let i = from;
-    while (i < this.score.steps.length && isSilent(this.score.steps[i])) i++;
+    while (i < this.score.steps.length && this.demanded(this.score.steps[i]).length === 0) i++;
     return i;
   }
 }

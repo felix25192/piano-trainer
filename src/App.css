@@ -57,7 +57,8 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
  * behind a settings menu.
  */
 .topbar .piece,
-.topbar .measure {
+.topbar .measure,
+.topbar .hands {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -72,10 +73,12 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
 }
 
 .topbar .piece:active,
-.topbar .measure:active { background: var(--raised); color: var(--ink); }
+.topbar .measure:active,
+.topbar .hands:active { background: var(--raised); color: var(--ink); }
 
 .topbar .piece:disabled,
-.topbar .measure:disabled { opacity: .5; cursor: default; }
+.topbar .measure:disabled,
+.topbar .hands:disabled { opacity: .5; cursor: default; }
 
 .topbar .piece {
   min-width: 0;
@@ -94,6 +97,8 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+.topbar .hands { flex: none; white-space: nowrap; }
 
 .caret { flex: none; font-size: 9px; opacity: .6; }
 
