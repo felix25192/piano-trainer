@@ -44,9 +44,11 @@ werden nur noch einmal verlangt. Ein Service Worker haelt die App nach einem
 Deploy am Leben und die Aufnahmen offline. Als Naechstes, nach dem Test am
 Instrument: Akkorde ueber das Mikrofon (Stufe 2, Wochen).
 
-**Nativ ist gestrichen.** Es gibt keinen Mac, iOS-Builds brauchen aber macOS
-und Xcode. Damit wird es auf dem iPad nie MIDI geben, denn Safari kann kein
-Web MIDI. Das Mikrofon ist nicht der Umweg, sondern der Weg.
+**Nativ geht doch, ohne Mac** - am 24.09. im Vorversuch gezeigt, auf dem
+Branch `ios-spike`: GitHub Actions baut die iOS-Huelle auf seinen
+macOS-Rechnern, mit einer eigenen MIDI-Bruecke. Fehlt noch das Signieren, und
+dafuer ein Apple-Developer-Konto (99 USD im Jahr). Das Mikrofon bleibt fuer
+das akustische Klavier der einzige Weg.
 
 **Noch nie getestet:** die App am echten Instrument. Bis das passiert ist,
 sind alle Aussagen ueber das Spielgefuehl Vermutungen.
@@ -1340,3 +1342,62 @@ Auf dem iPad und vom Home-Bildschirm ist er ungetestet. Und ein Geraet, das
 noch ein `index.html` von vor seiner Zeit haelt, kann beim ersten Start nach
 diesem Deploy ein letztes Mal schwarz bleiben - einmal nach unten ziehen, dann
 ist es vorbei.
+
+## Vorversuch: die iOS-Huelle, gebaut ohne Mac (24.09.2026)
+
+Auf dem Branch `ios-spike`, nicht auf `main`. Die Frage war: traegt der Weg
+zu MIDI auf dem iPad, obwohl es keinen Mac gibt? Beschlossen war "nativ
+gestrichen", weil iOS-Builds macOS und Xcode brauchen. Das stimmt - aber
+GitHub Actions stellt macOS-Rechner, fuer oeffentliche Repositories kostenlos.
+
+### Was gebaut ist
+
+- **Capacitor 8** um die bestehende App, mit Swift Package Manager statt
+  CocoaPods. `npx cap add ios` laeuft sogar unter Windows. Die App wird dafuer
+  mit `npm run build:native` gebaut: relative Pfade statt `/piano-trainer/`,
+  und ohne Service Worker, weil die Dateien in der App liegen.
+- **Eine eigene MIDI-Bruecke**, `native/midi-bridge`, gut hundert Zeilen
+  Swift. Die beiden veroeffentlichten Plugins wurden gelesen und taugen nicht:
+  das eine ist auf iOS ein Geruest, das nie einen MIDI-Client anlegt und kein
+  Ereignis weitergibt; das andere liest aus jedem Paket nur die erste
+  Nachricht - CoreMIDI darf aber gleichzeitige Nachrichten in ein Paket
+  packen, bei Bluetooth ist das ueblich, und dann fehlen Akkordtoene. Keines
+  bietet die Bluetooth-Kopplung an.
+- Die Bruecke nutzt die Event-List-API seit iOS 14: jede Nachricht ist ein
+  32-Bit-Wort, es gibt nichts zu zerlegen. Die Woerter gehen roh an
+  JavaScript. Welcher Ton angeschlagen wurde, entscheidet
+  `core/midiMessages.ts`, getestet, und dieselbe Regel gilt jetzt auch fuer
+  Web MIDI am Rechner. Dazu Apples eigener Dialog zum Koppeln eines
+  Bluetooth-MIDI-Geraets - iOS verbindet Bluetooth MIDI nicht von selbst.
+- `adapters/NativeMidiInput.ts` haengt hinter demselben Port wie Mikrofon und
+  Web MIDI. Kern und Matcher merken nichts davon.
+- `.github/workflows/ios.yml` baut unsigniert fuer Simulator und Geraet und
+  prueft, dass die Bruecke im kompilierten Code steckt.
+
+### Ergebnis
+
+Gruen, in drei Minuten: beide Builds, und `MidiBridgePlugin` im Maschinencode
+des Geraete-Builds. Der erste Lauf scheiterte nur an der eigenen Kontrolle -
+sie suchte in `App`, ein Debug-Build legt den Code aber in
+`App.debug.dylib`. Gesucht wird jetzt in allen Mach-O-Dateien und nur dort,
+denn die Konfigurationsdatei nennt den Klassennamen auch und haette die
+Kontrolle von allein bestehen lassen.
+
+### Was das beweist, und was nicht
+
+Bewiesen: Projekt, Swift-Code und Einbindung uebersetzen ohne Mac. Nicht
+bewiesen: dass es laeuft. Kein Byte MIDI ist durch die Bruecke gegangen, die
+Kopplung hat niemand gesehen, und Audio verhaelt sich in der Huelle anders als
+in Safari - die sechs Audio-Punkte gelten dort neu. Das zeigt erst ein
+signierter Build auf dem iPad.
+
+### Was fuer den signierten Build fehlt
+
+Von Felix, weil es sein Konto und Geld ist: die Mitgliedschaft im Apple
+Developer Program (99 USD im Jahr, Anmeldung in der App "Apple Developer" auf
+dem iPad), ein App-Eintrag in App Store Connect mit der Kennung
+`io.github.felix25192.pianotrainer`, ein API-Schluessel dort, und dessen drei
+Teile als Secrets im GitHub-Repository. Danach: der Workflow archiviert,
+signiert ueber den API-Schluessel und laedt zu TestFlight hoch; die Bruecke
+bekommt Knoepfe in der Oberflaeche. TestFlight-Builds laufen nach 90 Tagen ab,
+ein zeitgesteuerter Lauf muss also regelmaessig neu bauen.

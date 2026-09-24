@@ -57,6 +57,8 @@ src/Home.tsx    The start screen. Reports which mode was tapped; knows
   there is no Mac to build a native wrapper with, so it will never reach the
   iPad)
 - `adapters/MicInput.ts` — the microphone: strike, then pitch. Monophonic
+- `adapters/NativeMidiInput.ts` — MIDI inside the iOS shell, through the
+  bridge in `native/midi-bridge`; `core/midiMessages.ts` reads what it hands over
 - `adapters/audioSession.ts` — **the only file that touches the device's
   audio**: the context, the session category, the microphone
 - `adapters/SampledPiano.ts` — Web Audio, recordings of a real piano
@@ -345,7 +347,10 @@ aim at and still leaves the eyes the work of finding it on the page.
   `public/scores/SOURCES.md`.
 
 Safari implements no Web MIDI on any platform, so a MIDI keyboard can only
-reach the iPad through a native wrapper (Capacitor) later.
+reach the iPad through a native wrapper. On the `ios-spike` branch that
+wrapper exists: Capacitor 8, built unsigned by GitHub Actions on macOS since
+there is no Mac here, with its own CoreMIDI bridge in `native/midi-bridge`.
+It compiles; it has never run. Signing needs an Apple Developer account.
 
 ## History
 
