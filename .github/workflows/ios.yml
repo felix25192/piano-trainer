@@ -17,9 +17,9 @@ jobs:
   build:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -45,13 +45,23 @@ jobs:
       - name: Build for a device, unsigned
         run: ./.github/scripts/xcodebuild-unsigned.sh "generic/platform=iOS" device
 
+      # Searched in the compiled code only: the configuration file in the
+      # bundle names the class too, and would make the check pass on its own.
+      # A debug build keeps its code in App.debug.dylib, not in App itself.
       - name: The bridge is inside the app
         run: |
           app=$(find build/device -name "App.app" -type d | head -1)
-          echo "App: $app"
-          if nm -gU "$app/App" 2>/dev/null | grep -q MidiBridgePlugin || strings "$app/App" | grep -q MidiBridgePlugin; then
-            echo "- MidiBridgePlugin is compiled into the device build." >> "$GITHUB_STEP_SUMMARY"
+          echo "### Compiled code in $app" >> "$GITHUB_STEP_SUMMARY"
+          found=""
+          while IFS= read -r f; do
+            if file "$f" | grep -q "Mach-O"; then
+              echo "- ${f#$app/}" >> "$GITHUB_STEP_SUMMARY"
+              if grep -qa "MidiBridgePlugin" "$f"; then found="$found ${f#$app/}"; fi
+            fi
+          done < <(find "$app" -type f)
+          if [ -n "$found" ]; then
+            echo "MidiBridgePlugin is compiled into:$found" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "::error::MidiBridgePlugin is not in the device build"
+            echo "::error::MidiBridgePlugin is not in the compiled code of the device build"
             exit 1
           fi
