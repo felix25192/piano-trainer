@@ -19,6 +19,8 @@ import { buildSchedule, stepAtTime, type Schedule } from "./core/playback";
 import type { NoteOutput } from "./core/NoteOutput";
 import { SampledPiano } from "./adapters/SampledPiano";
 import { MicInput } from "./adapters/MicInput";
+import type { Heard, Refusal } from "./core/hearing";
+import { midiToName } from "./core/pitch";
 import { isAudioSupported } from "./adapters/audioSession";
 import Home, { type ModeId } from "./Home";
 import "./App.css";
@@ -228,6 +230,42 @@ const TEMPO_FACTORS: Array<[number, string]> = [
   [1, "wie notiert"],
 ];
 
+/** One line of the strike protocol: what was heard, and what was wanted then. */
+interface ProtocolEntry {
+  heard: Heard;
+  expected: number[];
+}
+
+/** Enough to see a pattern across a few notes without taking the score's height. */
+const PROTOCOL_LINES = 4;
+
+const REFUSALS: Record<Refusal, string> = {
+  "no-pitch": "keine Tonhöhe",
+  unclear: "unklar",
+  "between-keys": "zwischen zwei Tasten",
+  "off-keyboard": "außerhalb der Tastatur",
+};
+
+/**
+ * A key by name, both names for a black one.
+ *
+ * What the microphone hears is a key, not a note: a frequency carries no
+ * spelling, and the score's spelling is not in the engine's data. Calling a
+ * heard E flat "D#" in E flat major would be wrong, so a black key gets both.
+ */
+function keyLabel(midi: number): string {
+  const sharp = midiToName(midi, "sharp");
+  const flat = midiToName(midi, "flat");
+  const pretty = (name: string) => name.replace("#", "♯").replace("b", "♭");
+  return sharp === flat ? sharp : `${pretty(sharp)}/${pretty(flat)}`;
+}
+
+/** How a protocol line is coloured: as the engine will take it. */
+function verdictOf(heard: Heard, expected: number[]): string {
+  if (heard.midi === null) return "refused";
+  return expected.includes(heard.midi) ? "right" : "wrong";
+}
+
 const KIND_LABELS: Array<[ExerciseOptions["kind"], string]> = [
   ["scale", "Tonleiter"],
   ["arpeggio", "Arpeggio"],
@@ -301,6 +339,20 @@ export default function App() {
    * session and the two need different categories — see core/audioMode.
    */
   const [listening, setListening] = useState(false);
+  /**
+   * What the microphone made of each strike, newest first — only while the
+   * protocol is switched on.
+   *
+   * It names the expected notes, which the app otherwise never does. That is
+   * the price of being able to tell, at the instrument, whether a stuck
+   * highlight means "heard nothing" or "heard the wrong thing". Off by
+   * default, and not remembered across a reload, so that practice never
+   * starts with the answers showing.
+   */
+  const [protocolOn, setProtocolOn] = useState(false);
+  const [protocol, setProtocol] = useState<ProtocolEntry[]>([]);
+  const protocolOnRef = useRef(protocolOn);
+  protocolOnRef.current = protocolOn;
   const [tempoFactor, setTempoFactor] = useState(1);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState<string | null>(null);
@@ -861,7 +913,19 @@ export default function App() {
       return;
     }
 
-    unlistenRef.current = mic.onNoteOn((note) => play(note.midi));
+    // The strike is reported before its note, so the protocol reads what was
+    // expected before the note moves the position on.
+    const offHeard = mic.onHeard((heard) => {
+      if (!protocolOnRef.current) return;
+      const expected = matcherRef.current?.remaining ?? [];
+      setProtocol((entries) => [{ heard, expected }, ...entries].slice(0, PROTOCOL_LINES));
+    });
+    const offNote = mic.onNoteOn((note) => play(note.midi));
+    unlistenRef.current = () => {
+      offHeard();
+      offNote();
+    };
+    setProtocol([]);
     setListening(true);
   }
 
@@ -1088,6 +1152,28 @@ export default function App() {
           ✗
         </button>
       </div>
+
+      {protocolOn && (
+        <ol className="protocol" aria-label="Anschlagsprotokoll">
+          {protocol.length === 0 && (
+            <li className="muted">{listening ? "Noch kein Anschlag gehört." : "Mikrofon ist aus."}</li>
+          )}
+          {protocol.map(({ heard, expected }) => (
+            <li key={heard.struckAt} className={verdictOf(heard, expected)}>
+              <span>{heard.struckAt.toFixed(2)} s</span>
+              <span>{heard.midi === null ? REFUSALS[heard.refused ?? "no-pitch"] : keyLabel(heard.midi)}</span>
+              <span>erwartet {expected.length ? expected.map(keyLabel).join(" ") : "–"}</span>
+              <span>
+                {heard.by === "loudness" ? "Pegel" : "Spektrum"} {heard.level.toFixed(3)} · {heard.flux.toFixed(1)}
+              </span>
+              <span>
+                {heard.clarity === null ? "" : `Klarheit ${heard.clarity.toFixed(2)}`}
+                {heard.cents === null ? "" : ` · ${heard.cents > 0 ? "+" : ""}${heard.cents} ct`}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
 
       {sheet && (
         <>
@@ -1333,6 +1419,27 @@ export default function App() {
                 </div>
                 <p className="hint">Von Hand einstellen schaltet die automatische Anpassung ab.</p>
               </div>
+
+              {micSupported && (
+                <div className="field">
+                  <label className="row-toggle">
+                    Anschlagsprotokoll
+                    <input
+                      type="checkbox"
+                      checked={protocolOn}
+                      onChange={(e) => {
+                        setProtocolOn(e.target.checked);
+                        setProtocol([]);
+                      }}
+                    />
+                  </label>
+                  <p className="hint">
+                    Zeigt unter den Noten, was das Mikrofon bei jedem Anschlag
+                    gehört hat — und dafür auch die erwarteten Töne. Zur
+                    Fehlersuche am Instrument, nicht zum Üben.
+                  </p>
+                </div>
+              )}
 
               <div className="field">
                 <span>Tempo beim Vorspielen</span>

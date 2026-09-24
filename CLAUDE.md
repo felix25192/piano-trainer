@@ -46,7 +46,11 @@ src/Home.tsx    The start screen. Reports which mode was tapped; knows
 - `core/pitchDetect.ts` — YIN: samples in, one frequency out. Monophonic
 - `core/audioMode.ts` — the rule that playing and listening cannot both hold
   the device
-- `core/onset.ts` — notices a strike, cheaply, so the costly part runs rarely
+- `core/onset.ts` — notices a strike, cheaply, so the costly part runs rarely:
+  by loudness, and by new partials appearing in the spectrum
+- `core/spectrum.ts` — the analyser's spectrum, worked out in plain arithmetic
+- `core/hearing.ts` — **the microphone loop**: a frame of samples in, a
+  struck note out. The bench, the tests and the app all run this one
 - `core/NoteOutput.ts` — **the port** every sound output implements
 - `adapters/osmdScore.ts` — the only file allowed to know OSMD's object graph
 - `adapters/MidiInput.ts` — Web MIDI (desktop only; Safari has none, and
@@ -72,7 +76,7 @@ export PATH="/c/Program Files/nodejs:$PATH"
 ```
 
 ```bash
-npx vitest run          # 221 tests
+npx vitest run          # 247 tests
 npx tsc -b --noEmit     # types
 npx oxlint              # lint; silence means clean
 npm run build
@@ -89,6 +93,14 @@ the thirty piano recordings through `core/pitchDetect.ts` and prints what came
 back, at several window lengths and several points in the decay. Dev only —
 Vite builds `index.html`, so it is never published. Open it at
 <http://localhost:5173/pitch-lab.html>.
+
+`onset-lab.html` is its companion for the whole microphone loop: it plays the
+recordings the way an analyser would deliver them — the newest 4096 samples
+every 10 ms — through `core/hearing.ts`, singly, in legato, as repeated notes
+and as runs. **Measure changes to the microphone path here, not in
+`pitch-lab.html`**: the pitch bench asks about windows that begin at the
+strike, and the app never sees one. That difference once hid a loop that named
+3 notes of 30. <http://localhost:5173/onset-lab.html>, about a minute to run.
 
 **Deployment is automatic**: a push to `main` runs lint, tests, types and build,
 and publishes to <https://felix25192.github.io/piano-trainer/>.
@@ -187,15 +199,33 @@ works.
 **The microphone plays the app.** A button in the bar under the score hands
 the engine over to it, and a note played into the room then moves the
 highlight on exactly as a tapped button does — the `NoteInputSource` port
-makes them indistinguishable. Monophonic, which covers scales, arpeggios,
-five-finger exercises and any single line; chords are the harder problem and
-are not done.
+makes them indistinguishable. Monophonic: one note at a time. Chords are the
+harder problem and are not done — and so, for now, is anything with both
+hands, since both hands sounding together are a chord too. Every exercise the
+generator makes and every bundled piece is written for both hands, so until
+hands can be practised separately there is nothing in the app the microphone
+can play in the ordinary way.
 
-It listens for the *strike*, not for what is ringing. `core/onset.ts` watches
-the loudness a hundred times a second, which is cheap, and only when it says a
-key was hit does the eight-millisecond pitch detection run. That is not a
-saving but the whole design: a note is recognised 28 times out of 30 in the
-first fifty milliseconds and 15 out of 30 three seconds later.
+It listens for the *strike*, not for what is ringing, and `core/hearing.ts` is
+the whole loop. A hundred times a second it asks two cheap questions — did it
+get louder, did new partials appear — and only on a strike does the pitch
+detection run, 100 ms later, over the newest 46 ms, once the new note has the
+window to itself. Measured in `onset-lab.html` against the recordings: 27 of
+30 keys out of silence (the top three are missing, far above the repertoire),
+26 of 26 second notes in finger legato down to 150 ms apart, 14 of 14 repeated
+notes, 8 of 8 in runs up and down, no strike counted twice. With the pedal down
+it falls to 12 of 26, because then the old note never stops and every window is
+a chord.
+
+Through the real app — adapter, loop, protocol and matcher, fed recordings
+instead of a microphone — a C major scale played hand after hand came out 16 of
+16.
+
+For the instrument there is an **Anschlagsprotokoll** in the settings: a strip
+under the score that lists each strike, what was heard or why it was refused,
+what was expected, and the numbers behind it. It names the expected notes and
+is off by default for that reason; it exists so that a stuck highlight can be
+told apart into "heard nothing" and "heard the wrong thing".
 
 Listening and playing back can never both hold the device, and the buttons say
 so — each greys the other out while it runs.
@@ -212,7 +242,9 @@ aim at and still leaves the eyes the work of finding it on the page.
   [long-standing WebKit bug](https://bugs.webkit.org/show_bug.cgi?id=185448)
   would bite if it bites at all.
 - **Chords through the microphone.** `MicInput` is built and monophonic, which
-  is stage one and covers every single line the exercise generator makes. Two
+  is stage one and covers any single line — once one hand can be practised on
+  its own, see above. Legato with the pedal down is the same problem in small:
+  12 of 26 second notes. Two
   notes at once is stage two: not "what is playing", which is unsolved, but
   "are the expected notes there and is nothing foreign among them". Weeks, and
   the adversaries are the pedal, the chord still ringing from before, and the
@@ -222,7 +254,9 @@ aim at and still leaves the eyes the work of finding it on the page.
   the room and the attack of an actual instrument are unmeasured.
 
   The detector is measured against recordings. Against the thirty recordings it gets
-  **28 of 30 right in the first 50 ms after the strike**, and falls to 15 of 30
+  **28 of 30 right in the first 50 ms after the strike** — over a window that
+  *begins* at the strike, which the live loop only gets once it waits for it;
+  see `onset-lab.html` — and falls to 15 of 30
   three seconds later — a piano's fundamental dies before its partials do, and
   a low F sharp then reads an octave high. So the microphone path has to catch
   the *onset* and not the sustain, which is what the engine wants anyway: it

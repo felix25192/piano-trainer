@@ -12,7 +12,25 @@
  * partials do. Asking at the strike is not a shortcut, it is the only moment
  * worth asking at — and it happens to be exactly what the engine wants, since
  * it asks whether a note was played, never what is still ringing.
+ *
+ * Two questions are asked of every frame, because one is not enough.
+ *
+ * *Did it get louder?* That is all a strike out of silence needs, and it gets
+ * every one of them. But in legato the last note is still ringing when the
+ * next is struck, and a new note no louder than the old one barely moves the
+ * total: measured in `onset-lab.html`, a loudness rule alone heard 3 of 26
+ * second notes at crotchets and none at quavers.
+ *
+ * *Did new frequencies appear?* A struck note brings partials that were not
+ * there a moment ago, whatever is ringing underneath. Measured over the same
+ * cases, the rise across the spectrum is at least 2.35 at every legato strike
+ * down to 150 ms apart, and below 1.0 everywhere else except the slow attack
+ * of the very lowest notes. Quiet strikes out of silence are its weak corner —
+ * which is exactly where the loudness rule is strong.
  */
+
+/** Which of the two questions a strike was noticed by. */
+export type Strike = "loudness" | "spectrum";
 
 export interface OnsetOptions {
   /**
@@ -42,6 +60,15 @@ export interface OnsetOptions {
    * before the next one, quick enough to follow a change of dynamic.
    */
   settle?: number;
+  /**
+   * How far the spectrum has to rise, in decibels averaged over its bins, to
+   * count as new partials — see `spectralFlux`.
+   *
+   * Legato strikes measured 2.35 and up, everything that was not a strike
+   * below 1.0 apart from the tails of the lowest notes, which reach 1.72. Two
+   * sits between them with room on both sides.
+   */
+  flux?: number;
 }
 
 const DEFAULTS: Required<OnsetOptions> = {
@@ -49,6 +76,7 @@ const DEFAULTS: Required<OnsetOptions> = {
   gap: 0.07,
   floor: 0.004,
   settle: 0.25,
+  flux: 2,
 };
 
 export class OnsetDetector {
@@ -56,6 +84,7 @@ export class OnsetDetector {
   /** The level the signal has settled at, which a strike has to stand out from. */
   private background = 0;
   private lastOnset = Number.NEGATIVE_INFINITY;
+  private lastFlux = 0;
   private started = false;
 
   constructor(options: OnsetOptions = {}) {
@@ -63,28 +92,39 @@ export class OnsetDetector {
   }
 
   /**
-   * Feeds one frame in and reports whether a note was struck at it.
+   * Feeds one frame in and reports whether a note was struck at it, and how
+   * that was noticed.
    *
-   * `level` is the root mean square of the frame and `at` is its time in
-   * seconds; both come from the caller so that this stays free of any clock.
+   * `level` is the root mean square of the frame, `at` its time in seconds and
+   * `flux` how much its spectrum rose against a moment before. All three come
+   * from the caller, so that this stays free of any clock and any transform.
    */
-  feed(level: number, at: number): boolean {
+  feed(level: number, at: number, flux = 0): Strike | null {
     if (!this.started) {
       // Nothing to stand out from yet: the first frame sets the scene rather
       // than counting as a strike.
       this.background = level;
+      this.lastFlux = flux;
       this.started = true;
-      return false;
+      return null;
     }
 
-    const struck =
-      level >= this.options.floor &&
-      level > this.background * this.options.rise &&
-      at - this.lastOnset >= this.options.gap;
+    const { floor, rise, gap, flux: fluxThreshold } = this.options;
+    const audible = level >= floor && at - this.lastOnset >= gap;
+
+    const louder = level > this.background * rise;
+    /*
+     * The spectrum counts when it *crosses* the threshold, not while it stays
+     * above it. The rise goes on for as long as the new note is still filling
+     * the window, and the lowest notes build up so slowly that the tail of one
+     * strike is still high after the gap has passed. Crossing happens once.
+     */
+    const newPartials = flux >= fluxThreshold && this.lastFlux < fluxThreshold;
 
     this.follow(level, at);
+    this.lastFlux = flux;
 
-    if (!struck) return false;
+    if (!audible || !(louder || newPartials)) return null;
 
     this.lastOnset = at;
     /*
@@ -94,13 +134,14 @@ export class OnsetDetector {
      * counts as another strike.
      */
     this.background = level;
-    return true;
+    return louder ? "loudness" : "spectrum";
   }
 
   /** Forgets everything, as after the microphone has been off. */
   reset(): void {
     this.background = 0;
     this.lastOnset = Number.NEGATIVE_INFINITY;
+    this.lastFlux = 0;
     this.started = false;
   }
 
@@ -116,4 +157,37 @@ export class OnsetDetector {
     const share = Math.min(1, Math.max(0, this.options.settle));
     this.background += (level - this.background) * share;
   }
+}
+
+/**
+ * How much a spectrum rose against an earlier one: the average, over the
+ * bins, of every increase in decibels. Decreases count as nothing.
+ *
+ * Only rises, because a note dying away lowers everything and a note arriving
+ * raises what it brings; adding the two would let the one cancel the other.
+ * In decibels, because a partial that appears quietly next to a loud old note
+ * is as much news as one that appears loudly.
+ *
+ * `floorDb` is where the scale stops. Below it every bin counts as equally
+ * silent, which keeps the noise of an empty room — measured with room noise
+ * at the loudest the silence floor lets through, around -92 dB a bin — from
+ * flickering into a rise. `bins` limits the sum to where piano partials
+ * matter; the caller works out how many bins that is at its sample rate.
+ */
+export function spectralFlux(
+  current: Float32Array,
+  earlier: Float32Array,
+  bins = current.length,
+  floorDb = -80,
+): number {
+  const top = Math.min(bins, current.length, earlier.length);
+  if (top <= 1) return 0;
+
+  let sum = 0;
+  // Bin 0 is the constant offset, not a frequency, so it is left out.
+  for (let k = 1; k < top; k++) {
+    const rise = Math.max(floorDb, current[k]) - Math.max(floorDb, earlier[k]);
+    if (rise > 0) sum += rise;
+  }
+  return sum / (top - 1);
 }

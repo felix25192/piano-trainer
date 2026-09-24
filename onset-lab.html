@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prüfstand: Anschlag</title>
+<style>
+  :root { --bg:#12141a; --panel:#1b1f28; --ink:#e8eaf0; --muted:#8b93a7; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--ink);
+         font:14px/1.5 system-ui, sans-serif; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  p.lead { color:var(--muted); margin:0 0 16px; max-width:66ch; }
+  pre { background:var(--panel); padding:12px; border-radius:8px; overflow-x:auto;
+        font:12px/1.6 ui-monospace, monospace; max-width:900px; }
+</style>
+</head>
+<body>
+
+<h1>Prüfstand: Anschlag</h1>
+<p class="lead">
+  Spielt die dreißig Aufnahmen aus <code>public/piano/</code> so, wie das
+  Mikrofon sie hören würde: alle 10 ms die letzten 4096 Samples, durch
+  <code>core/hearing.ts</code> — dieselbe Schleife, die in der App läuft. Einzeln
+  aus der Stille, im Legato mit früh, spät und gar nicht fallendem Dämpfer, als
+  Tonwiederholung und als Lauf. Etwa eine Minute. Nur für die Entwicklung, wird
+  nicht veröffentlicht.
+</p>
+
+<pre id="summary">läuft…</pre>
+
+<script type="module">
+import { Hearing, WINDOW } from "/src/core/hearing.ts";
+import { midiToName } from "/src/core/pitch.ts";
+
+const RATE = 44100;
+const FRAME = 0.01;
+
+// Dieselben Dateien und dieselbe Zuordnung wie in adapters/SampledPiano.ts.
+const SAMPLES = [
+  "A0","C1","Ds1","Fs1","A1","C2","Ds2","Fs2","A2","C3","Ds3","Fs3",
+  "A3","C4","Ds4","Fs4","A4","C5","Ds5","Fs5","A5","C6","Ds6","Fs6",
+  "A6","C7","Ds7","Fs7","A7","C8",
+];
+
+const decoder = new OfflineAudioContext(1, 1, RATE);
+
+/** Eine Aufnahme als Mono-Samples, vorne bis zum Anschlag gekürzt. */
+async function load(name) {
+  const raw = await fetch(`/piano/${name}.mp3`).then((r) => r.arrayBuffer());
+  const buf = await decoder.decodeAudioData(raw);
+  const mono = new Float32Array(buf.length);
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const data = buf.getChannelData(c);
+    for (let i = 0; i < buf.length; i++) mono[i] += data[i] / buf.numberOfChannels;
+  }
+  let peak = 0;
+  for (const v of mono) peak = Math.max(peak, Math.abs(v));
+  let start = 0;
+  while (start < mono.length && Math.abs(mono[start]) < peak * 0.01) start++;
+  return mono.subarray(start);
+}
+
+const notes = [];
+for (let i = 0; i < SAMPLES.length; i++) {
+  notes.push({ name: SAMPLES[i], midi: 21 + i * 3, data: await load(SAMPLES[i]) });
+}
+// A2 bis C6: wo Tonleitern und Einzelstimmen gespielt werden.
+const middle = notes.filter((n) => n.midi >= 45 && n.midi <= 84);
+
+/**
+ * Ein Signal aus Anschlägen. `until` dämpft einen Ton ab da über 30 ms ab,
+ * wie ein Dämpfer; ohne klingt er aus. Dazu leises Rauschen, wie in einem Zimmer.
+ */
+function render(strikes, seconds, noise = 0.0005) {
+  const out = new Float32Array(Math.ceil(seconds * RATE));
+  let seed = 1;
+  for (let i = 0; i < out.length; i++) {
+    seed = (seed * 16807) % 2147483647;
+    out[i] = ((seed / 2147483647) * 2 - 1) * noise * 1.7;
+  }
+  for (const s of strikes) {
+    const from = Math.floor(s.at * RATE);
+    const stop = s.until === undefined ? Infinity : Math.floor(s.until * RATE);
+    for (let i = 0; i + from < out.length && i < s.note.data.length; i++) {
+      const t = i + from;
+      let gain = s.gain ?? 1;
+      if (t >= stop) {
+        const fade = (t - stop) / (0.03 * RATE);
+        if (fade >= 1) break;
+        gain *= 1 - fade;
+      }
+      out[t] += s.note.data[i] * gain;
+    }
+  }
+  return out;
+}
+
+let frames = 0;
+let frameMs = 0;
+
+/**
+ * Was ein AnalyserNode mit fftSize WINDOW alle 10 ms hergibt: die letzten
+ * WINDOW Samples. Die Phase ist krumm, damit kein Anschlag zufällig genau auf
+ * ein Bild fällt.
+ */
+function listen(signal) {
+  const hearing = new Hearing(RATE);
+  const buf = new Float32Array(WINDOW);
+  const heard = [];
+  for (let t = 0.0037; t < signal.length / RATE; t += FRAME) {
+    const end = Math.floor(t * RATE);
+    for (let i = 0; i < WINDOW; i++) {
+      const j = end - WINDOW + i;
+      buf[i] = j >= 0 && j < signal.length ? signal[j] : 0;
+    }
+    const t0 = performance.now();
+    const h = hearing.feed(buf, t);
+    frameMs += performance.now() - t0;
+    frames++;
+    if (h) heard.push(h);
+  }
+  return heard;
+}
+
+/** Der erste Anschlag, der innerhalb von 70 ms nach `at` bemerkt wurde. */
+const near = (heard, at) => heard.find((h) => h.struckAt > at - 0.001 && h.struckAt < at + 0.07);
+/** Alles, was nicht zu einem der Anschläge gehört. */
+const extra = (heard, ats) => heard.filter((h) => !ats.some((at) => h.struckAt > at - 0.001 && h.struckAt < at + 0.07)).length;
+const label = (h) => (h ? (h.midi === null ? h.refused : midiToName(h.midi)) : "–");
+
+const lines = [];
+const show = () => (document.getElementById("summary").textContent = lines.join("\n"));
+
+// A: ein Ton aus der Stille, laut und leise.
+for (const [gain, wie] of [[1, "laut "], [0.2, "leise"]]) {
+  let right = 0, extras = 0, latency = 0;
+  const misses = [];
+  for (const n of notes) {
+    const heard = listen(render([{ note: n, at: 0.5, gain }], 2.5));
+    const h = near(heard, 0.5);
+    extras += extra(heard, [0.5]);
+    if (h?.midi === n.midi) { right++; latency += h.answeredAt - 0.5; }
+    else misses.push(`${n.name}:${label(h)}`);
+  }
+  lines.push(`Einzelton aus der Stille, ${wie}:  richtig ${right}/30, überzählig ${extras}, ` +
+    `Antwort nach ${Math.round((latency / Math.max(1, right)) * 1000)} ms   [${misses.join(" ")}]`);
+  show();
+}
+lines.push("");
+
+/*
+ * B: legato, auf- und abwärts. Wie lange der alte Ton neben dem neuen weiterklingt,
+ * entscheidet alles: beim Fingerlegato fällt sein Dämpfer kurz nach dem neuen
+ * Anschlag, bei schlampigem Legato später, mit Pedal gar nicht. Das Letzte ist
+ * ein Akkord und für einen einstimmigen Detektor nicht lösbar — steht hier, damit
+ * es nicht vergessen wird.
+ */
+for (const [art, overlap, spacings] of [
+  ["Legato, Dämpfer nach 30 ms", 0.03, [0.6, 0.3, 0.15]],
+  ["Legato, Dämpfer nach 80 ms", 0.08, [0.3, 0.15]],
+  ["Legato mit Pedal          ", null, [0.6, 0.3, 0.15]],
+]) {
+  for (const spacing of spacings) {
+    let pairs = 0, right = 0, old = 0, other = 0, none = 0, extras = 0;
+    for (let i = 0; i < middle.length - 1; i++) {
+      for (const [a, b] of [[middle[i], middle[i + 1]], [middle[i + 1], middle[i]]]) {
+        pairs++;
+        const second = 0.5 + spacing;
+        const until = overlap === null ? undefined : second + overlap;
+        const heard = listen(render([{ note: a, at: 0.5, until }, { note: b, at: second }], second + 0.8));
+        extras += extra(heard, [0.5, second]);
+        const h = near(heard, second);
+        if (!h || h.midi === null) none++;
+        else if (h.midi === b.midi) right++;
+        else if (h.midi === a.midi) old++;
+        else other++;
+      }
+    }
+    lines.push(`${art}, ${String(spacing * 1000).padStart(3)} ms Abstand:  zweiter Ton richtig ${right}/${pairs}, ` +
+      `alter Ton ${old}, anderer ${other}, nichts ${none}, überzählig ${extras}`);
+    show();
+  }
+}
+lines.push("");
+
+// C: derselbe Ton noch einmal, dazwischen kurz gedämpft.
+for (const spacing of [0.6, 0.3]) {
+  let right = 0, extras = 0;
+  for (const n of middle) {
+    const second = 0.5 + spacing;
+    const heard = listen(render([{ note: n, at: 0.5, until: second - 0.04 }, { note: n, at: second }], second + 0.8));
+    extras += extra(heard, [0.5, second]);
+    if (near(heard, second)?.midi === n.midi) right++;
+  }
+  lines.push(`Tonwiederholung, ${spacing * 1000} ms:  zweiter Ton richtig ${right}/${middle.length}, überzählig ${extras}`);
+  show();
+}
+lines.push("");
+
+// D: ein Lauf im Fingerlegato, acht Töne, auf- und abwärts.
+for (const spacing of [0.3, 0.15]) {
+  for (const run of [middle.slice(2, 10), middle.slice(2, 10).reverse()]) {
+    const strikes = run.map((note, i) => ({ note, at: 0.5 + i * spacing, until: 0.5 + (i + 1) * spacing + 0.03 }));
+    const heard = listen(render(strikes, 0.5 + run.length * spacing + 1));
+    const got = strikes.map((s) => label(near(heard, s.at)));
+    const right = strikes.filter((s, i) => near(heard, s.at)?.midi === run[i].midi).length;
+    lines.push(`Lauf, ${spacing * 1000} ms:  ${right}/8   ${got.join(" ")}`);
+  }
+}
+lines.push("");
+lines.push(`Rechenzeit je Bild: ${(frameMs / frames).toFixed(3)} ms im Mittel, bei einem Bild alle 10 ms`);
+show();
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # Projektplan
 
-Stand: 23.09.2026
+Stand: 24.09.2026
 
 > **Wie diese Datei zu lesen ist:** Unten stehen die Abschnitte in der
 > Reihenfolge ihrer Entstehung, jeder datiert. Zum Einsteigen reicht dieser
@@ -28,19 +28,20 @@ Linie. Spike A ist in Safari auf dem iPad bestanden, gemessen und nicht
 vermutet.
 
 Veroeffentlicht unter <https://felix25192.github.io/piano-trainer/>, bei jedem
-Push auf `main` automatisch aktualisiert. 221 Tests.
+Push auf `main` automatisch aktualisiert. 247 Tests.
 
-**Als Naechstes.** Der Mikrofonknopf ist gebaut und ausgeliefert, aber am
-Instrument noch nie ausprobiert - das ist der offene Faden. Bisher wurde
-gesummt und es wurden Aufnahmen durch den Detektor geschickt. Zu klaeren ist
-nur eines: geht die Markierung gar nicht weiter, oder springt sie an falsche
-Stellen? Das erste heisst, die Anschlagserkennung sieht zu wenig, das zweite,
-sie sieht zu viel; gedreht wird dann an `rise`, `gap` und `floor` in
-`core/onset.ts`.
+**Als Naechstes.** Der Mikrofonknopf ist gebaut, aber am Instrument noch nie
+ausprobiert - das ist der offene Faden. Am 24.09. hat sich gezeigt, dass er in
+der ausgelieferten Form fast nichts gehoert haette; die Schleife ist neu
+gebaut und am Pruefstand `onset-lab.html` gemessen, siehe den Abschnitt von
+dem Tag. Fuer den Test am Instrument gibt es das Anschlagsprotokoll in den
+Einstellungen: es sagt bei jedem Anschlag, was gehoert wurde, und macht aus
+"geht nicht" eine Zahl.
 
-Danach der Reihe nach: Akkorde ueber das Mikrofon (Stufe 2, Wochen), ein
-Service Worker gegen den schwarzen Bildschirm nach jedem Deploy, und die
-gebundenen Toene, die der Matcher noch zweimal verlangt.
+Beschlossen am 24.09., der Reihe nach: Haende getrennt ueben (sonst hat das
+Mikrofon nichts Einstimmiges zu hoeren), gebundene Toene nicht mehr zweimal
+verlangen, ein Service Worker gegen den schwarzen Bildschirm nach jedem Deploy.
+Danach Akkorde ueber das Mikrofon (Stufe 2, Wochen).
 
 **Nativ ist gestrichen.** Es gibt keinen Mac, iOS-Builds brauchen aber macOS
 und Xcode. Damit wird es auf dem iPad nie MIDI geben, denn Safari kann kein
@@ -1137,3 +1138,112 @@ Akkorde - der Detektor ist einstimmig und bleibt es, mehrstimmig ist Stufe 2
 und ein anderes Problem. Und der Pegel am echten Instrument ist ungemessen:
 bisher wurde gesummt oder eine Aufnahme durchgeschickt.
 
+## Das Mikrofon haette am Klavier nichts gehoert (24.09.2026)
+
+Vor dem ersten Test am Instrument die Schleife aus `MicInput` einmal Bild fuer
+Bild mit den dreissig Aufnahmen nachgespielt - so, wie ein Analyser sie
+liefert: alle 10 ms die neuesten 4096 Samples. Ergebnis: aus der Stille **3 von
+30** Toenen richtig, mit weiterklingendem Vorgaenger bei Vierteln 3 von 26
+zweiten Toenen, bei Achteln keiner. Am Wochenende haette die Markierung sich schlicht nicht bewegt, und
+der Plan sagte fuer diesen Fall: an `rise`, `gap` und `floor` drehen. Das haette
+nichts geholfen, denn die Schwellen waren nicht das Problem.
+
+### Zwei Fehler, eine Ursache
+
+**Die Tonhoehe wurde zu frueh gefragt.** Die "28 von 30 in den ersten 50 ms"
+aus `pitch-lab.html` gelten fuer Fenster, die mit dem Anschlag *beginnen*. Die
+App fragte aber in dem Bild, in dem der Anschlag bemerkt wurde - und dieses
+Fenster *endet* beim Anschlag. Von seinen 93 ms sind ein paar Millisekunden
+der neue Ton, der Rest Stille oder der Ton davor.
+
+**Der zweite Ton wurde nicht bemerkt.** Die Lautstaerke lief ueber dieselben 93
+ms, der Anstieg verschmiert also ueber neun Bilder, waehrend der Hintergrund
+hinterherlaeuft. Und im Legato klingt der alte Ton noch: ein gleich lauter
+neuer Ton hebt die Summe nie auf das 2,2-fache.
+
+Die gemeinsame Ursache: gemessen wurde der Detektor, gebaut wurde eine
+Schleife um ihn herum, und die Schleife hat niemand gemessen. Beide Haelften
+waren fuer sich richtig. Deshalb liegt die Schleife jetzt in
+`core/hearing.ts`, rein und getestet, und Pruefstand, Tests und App fuehren
+denselben Code aus. `MicInput` reicht nur noch Bilder weiter.
+
+### Was jetzt gilt, und warum
+
+**Der Anschlag wird zweimal gefragt.** Wurde es lauter - ueber die neuesten 12
+ms statt ueber 93? Und sind neue Teiltoene aufgetaucht - der mittlere Anstieg
+ueber das Spektrum der neuesten 2048 Samples, verglichen mit dem Spektrum 30 ms
+vorher? Die zweite Frage war nicht der erste Versuch: ein kuerzeres
+Lautstaerkefenster allein brachte Tonwiederholungen von 1 auf 13 von 14, im
+Legato bei Achteln aber nur 6 von 26. Das Spektrum trennt: Legato-Anschlaege
+liegen bei mindestens 2,35, alles andere unter 1,0, ausser dem langsamen
+Einschwingen der tiefsten Toene mit 1,72. Die Schwelle ist 2, und sie zaehlt nur
+beim Ueberschreiten, damit dieser Nachlauf nicht noch einmal ausloest.
+
+Lauteres Zimmerrauschen aendert daran nichts, auch das ist gemessen: selbst an
+der Grenze, die der Stilleboden noch durchlaesst, liegt es je Frequenzband bei
+etwa -92 dB, unter dem Boden von -80, ab dem das Spektrum ueberhaupt zaehlt.
+
+Das Spektrum rechnet `core/spectrum.ts` selbst, statt es vom `AnalyserNode` zu
+holen - dieselben Zahlen, aber nur so rechnen Pruefstand und Tests dasselbe wie
+die App. Es kostet einen Bruchteil der Tonhoehenerkennung; die ganze Schleife
+braucht etwa 0,4 ms je Bild, bei einem Bild alle 10 ms.
+
+**Die Tonhoehe wird 100 ms nach dem Anschlag gefragt, ueber die neuesten 46
+ms.** Warten, bis der neue Ton das Fenster fuer sich hat, und dann nur den
+juengsten Teil ansehen. Das war ein zweiter Befund: mit weiterklingendem
+Vorgaenger stehen im langen Fenster zwei Toene, und YIN findet dann die
+Periode, die beide gemeinsam haben - bei einer kleinen Terz liegt die drei
+Oktaven tiefer. Beim Fingerlegato, Daempfer 30 ms nach dem neuen Anschlag,
+nennt das kurze Fenster 26 von 26 zweiten Toenen, das lange 16. Die drei
+tiefsten Tasten reicht das kurze Fenster nicht; fuer sie wird das ganze
+gefragt, breit gesucht, und die Antwort nur genommen, wenn sie unterhalb dessen
+liegt, was das kurze haette finden koennen. Nur dort zu suchen waere die
+Einengung, die schon einmal als falsch gemessen wurde.
+
+Kommt der naechste Anschlag vor der Frage, wird sofort gefragt, und zwar ueber
+das Fenster vor den letzten 30 ms - so weit zurueck kann der neue Ton schon
+begonnen haben, wenn das Spektrum ihn bemerkt. Ohne diesen Schnitt nennt der
+Test aus C5 und E5 ein C3: wieder die gemeinsame Periode.
+
+### Nachgemessen
+
+In `onset-lab.html`, alles durch `core/hearing.ts`:
+
+| | vorher | jetzt |
+|---|---|---|
+| Einzelton aus der Stille | 3/30 | 27/30 |
+| Legato, Daempfer nach 30 ms, 600 / 300 / 150 ms | - | 26 / 26 / 26 |
+| Legato, Daempfer nach 80 ms, 300 / 150 ms | - | 23 / 18 |
+| Legato mit Pedal, 600 / 300 / 150 ms | 3 / 0 / 0 von 26 | 21 / 12 / 4 |
+| Tonwiederholung, 600 / 300 ms | 3 / 1 von 14 | 14 / 14 |
+| Lauf auf- und abwaerts, 300 und 150 ms | - | 8/8 in allen vier |
+| ueberzaehlige Anschlaege | 0 | 0 |
+
+Die drei, die aus der Stille fehlen, sind die obersten drei Tasten, weit ueber
+dem Repertoire. Die Antwort kommt etwa 110 ms nach dem Anschlag.
+
+Und durch die echte App, mit einem nachgebauten Mikrofon, das Aufnahmen
+abspielt: C-Dur ueber eine Oktave, Hand nach Hand angeschlagen, 16 von 16. Die
+Wiedergabe laeuft danach unveraendert bis zum Ende. Der grep auf die
+Audio-Sitzung findet dieselben erlaubten Stellen wie vorher.
+
+### Was offen bleibt, ehrlich
+
+**Legato mit Pedal** ist ein Akkord, solange der alte Ton klingt: 12 von 26 im
+besten Fall, gleich wie gefragt wird. Das ist Stufe 2.
+
+**Beide Haende zugleich** ebenso - und das betrifft alles in der App, denn jede
+Uebung und jedes Stueck ist zweihaendig. Das stand anders in `CLAUDE.md` ("deckt
+jede Uebung des Generators ab") und war falsch. Beim Test mit beiden Haenden,
+die Linke noch klingend, als die Rechte anschlug, blieb die Markierung auf dem
+zweiten Schritt stehen und wurde rot. Beschlossen: Haende getrennt ueben, als
+naechster Schritt.
+
+**Das Anschlagsprotokoll** nennt die erwarteten Toene, was die App sonst nie
+tut. Deshalb ist es aus, wenn die App startet, und nur zur Fehlersuche da. Eine
+schwarze Taste heisst dort "D♯4/E♭4": gehoert wird eine Taste, keine Note, und
+eine Frequenz hat keine Schreibweise.
+
+Und weiterhin: ein echtes Instrument hat das Mikrofon nie gehoert.
+Lautsprecher und Hall eines Digitalpianos machen das Legato eher schwerer als
+die Aufnahmen.
