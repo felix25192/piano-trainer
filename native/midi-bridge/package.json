@@ -1,0 +1,11 @@
+{
+  "name": "piano-trainer-midi-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hands every MIDI message the iPad receives to the app, as it came. CoreMIDI in, Universal MIDI Packet words out.",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}

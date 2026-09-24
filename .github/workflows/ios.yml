@@ -1,0 +1,57 @@
+name: iOS build
+
+# The iOS shell, built where macOS is: there is no Mac to build it on
+# otherwise. For now unsigned, for the simulator and for a device — proof that
+# the project and the MIDI bridge compile without one. Signing and TestFlight
+# need an Apple Developer account and come after.
+
+on:
+  push:
+    branches: [ios-spike]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:native
+
+      # Copies the build into the shell and writes the plugin list into its
+      # configuration — both are generated, not committed.
+      - run: npx cap sync ios
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          echo "### Toolchain" >> "$GITHUB_STEP_SUMMARY"
+          xcodebuild -version | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"
+          echo "Plugins in the shell: $(grep -A3 packageClassList ios/App/App/capacitor.config.json | tr -d '\n\t ')" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build for the simulator, unsigned
+        run: ./.github/scripts/xcodebuild-unsigned.sh "generic/platform=iOS Simulator" simulator
+
+      - name: Build for a device, unsigned
+        run: ./.github/scripts/xcodebuild-unsigned.sh "generic/platform=iOS" device
+
+      - name: The bridge is inside the app
+        run: |
+          app=$(find build/device -name "App.app" -type d | head -1)
+          echo "App: $app"
+          if nm -gU "$app/App" 2>/dev/null | grep -q MidiBridgePlugin || strings "$app/App" | grep -q MidiBridgePlugin; then
+            echo "- MidiBridgePlugin is compiled into the device build." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::MidiBridgePlugin is not in the device build"
+            exit 1
+          fi

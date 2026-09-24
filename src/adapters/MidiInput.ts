@@ -1,4 +1,5 @@
 import type { NoteInputSource, NoteListener, PlayedNote } from "../core/NoteInputSource";
+import { struckKey } from "../core/midiMessages";
 import { isOnPiano } from "../core/pitch";
 
 /**
@@ -10,9 +11,6 @@ import { isOnPiano } from "../core/pitch";
  * is why MicInput exists. On the desktop this is the exact, latency-free input
  * the microphone path gets measured against.
  */
-
-const NOTE_ON = 0x90;
-const STATUS_MASK = 0xf0;
 
 export class MidiInput implements NoteInputSource {
   readonly name: string;
@@ -73,15 +71,12 @@ export class MidiInput implements NoteInputSource {
     const data = event.data;
     if (!data || data.length < 3) return;
 
-    const [status, note, velocity] = data;
-
-    // Most keyboards, including the Kawai ES series, end a note by sending
-    // note-on with velocity zero rather than an actual note-off message —
-    // so velocity is what decides here, not the status byte alone.
-    if ((status & STATUS_MASK) !== NOTE_ON || velocity === 0) return;
+    // Web MIDI hands over one whole message per event; what counts as a
+    // struck key is decided in core, the same for every route.
+    const note = struckKey({ status: data[0], data1: data[1], data2: data[2] });
 
     // Pitch bend, control changes and stray data have no place upstream.
-    if (!isOnPiano(note)) return;
+    if (note === null || !isOnPiano(note)) return;
 
     const played: PlayedNote = {
       midi: note,

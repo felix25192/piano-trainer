@@ -4,9 +4,13 @@ import { defineConfig } from "vite";
 // GitHub Pages serves project sites from https://<user>.github.io/<repo>/, so
 // the built app has to know it does not live at the root. The dev server does,
 // which is why this depends on the command.
-export default defineConfig(({ command }) => ({
+//
+// The iOS shell is the third case: Capacitor serves the build from its own
+// origin, at the root of the app bundle, so `--mode native` builds with
+// relative paths that work wherever the files end up.
+export default defineConfig(({ command, mode }) => ({
   plugins: [react()],
-  base: command === "build" ? "/piano-trainer/" : "/",
+  base: command !== "build" ? "/" : mode === "native" ? "./" : "/piano-trainer/",
   build: {
     rollupOptions: {
       /*
