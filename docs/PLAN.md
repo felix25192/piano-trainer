@@ -40,9 +40,9 @@ Einstellungen: es sagt bei jedem Anschlag, was gehoert wurde, und macht aus
 
 Seit dem 24.09. lassen sich die Haende getrennt ueben - mit dem Mikrofon der
 einzige Weg, denn beide Haende zusammen sind ein Akkord -, und gebundene Toene
-werden nur noch einmal verlangt. Als Naechstes ein Service Worker gegen den
-schwarzen Bildschirm nach jedem Deploy, danach Akkorde ueber das Mikrofon
-(Stufe 2, Wochen).
+werden nur noch einmal verlangt. Ein Service Worker haelt die App nach einem
+Deploy am Leben und die Aufnahmen offline. Als Naechstes, nach dem Test am
+Instrument: Akkorde ueber das Mikrofon (Stufe 2, Wochen).
 
 **Nativ ist gestrichen.** Es gibt keinen Mac, iOS-Builds brauchen aber macOS
 und Xcode. Damit wird es auf dem iPad nie MIDI geben, denn Safari kann kein
@@ -1294,3 +1294,49 @@ Die Ausnahme ist der Einstieg mitten in einer Bindung - per Antippen, per
 Taktwahl, oder wo eine vorgespielte Stelle aufhoerte. Dann klingt noch nichts,
 und wer dort einsetzt, schlaegt den Ton an. Der Matcher merkt sich dafuer, ob
 die Position gesetzt oder erspielt wurde.
+
+## Ein Service Worker gegen den schwarzen Bildschirm (24.09.2026)
+
+Jeder Build benennt seinen Code nach dem Inhalt, und GitHub Pages loescht bei
+jedem Deploy die alten Dateien. Eine App vom Home-Bildschirm, die das
+`index.html` von gestern behalten hat, fragt dann nach Code, den es nicht mehr
+gibt - React startet nie, und uebrig bleibt die Hintergrundfarbe.
+
+`public/sw.js` hat drei Regeln, eine je Art von Datei:
+
+- **Seiten zuerst aus dem Netz.** Nur das neueste `index.html` nennt den
+  richtigen Code. Das gespeicherte ist nur die Antwort, wenn es gar kein Netz
+  gibt.
+- **Code zuerst aus dem Speicher.** Eine gehashte Datei aendert sich unter
+  ihrem Namen nie. Was keine gespeicherte Seite mehr nennt, wird geloescht,
+  sonst liesse jeder Deploy anderthalb Megabyte mehr auf dem Geraet.
+- **Aufnahmen und Noten zuerst aus dem Speicher**, und die dreissig Aufnahmen
+  gleich bei der Installation - beschlossen, weil 1,9 MB wenig ist und dann auch
+  die erste Wiedergabe ohne Netz geht. Einzeln und mit Fehlertoleranz geholt:
+  eine Aufnahme, die nicht ankommt, darf den Service Worker nicht aufhalten.
+
+Reines JavaScript in `public/` und nicht TypeScript in `src/`: er muss an einer
+festen Adresse ueber dem Code liegen, den er ausliefert, ohne Hash im Namen.
+Registriert nur im veroeffentlichten Build; im Entwicklungsserver saesse er
+zwischen Browser und Vite und lieferte alten Code an eine Seite, die gerade
+bearbeitet wird.
+
+### Nachgemessen
+
+`vite preview` taugte dafuer nicht: er beantwortet Skripte mit dem Header
+`Sec-Fetch-Dest: script` mit 404, auch ganz ohne Service Worker. Stattdessen
+ein kleiner statischer Server, der sich wie Pages verhaelt. Damit:
+
+- Installiert, steuert die Seite, 30 Aufnahmen im Speicher.
+- Server aus, neu geladen: die App startet, das Menuett oeffnet sich und
+  spielt, Takt 2 bis 5 ohne Fehler.
+- Deploy nachgestellt, der Code umbenannt und die alte Datei geloescht wie bei
+  Pages: die App laedt den neuen Code, und der alte ist aus dem Speicher
+  verschwunden.
+
+### Was offen bleibt
+
+Auf dem iPad und vom Home-Bildschirm ist er ungetestet. Und ein Geraet, das
+noch ein `index.html` von vor seiner Zeit haelt, kann beim ersten Start nach
+diesem Deploy ein letztes Mal schwarz bleiben - einmal nach unten ziehen, dann
+ist es vorbei.

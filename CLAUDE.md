@@ -61,6 +61,9 @@ src/Home.tsx    The start screen. Reports which mode was tapped; knows
   audio**: the context, the session category, the microphone
 - `adapters/SampledPiano.ts` — Web Audio, recordings of a real piano
 - `adapters/scoreLibrary.ts` — IndexedDB
+- `public/sw.js` — the service worker: pages from the network first, code and
+  recordings from the cache first. Plain JavaScript at a fixed address,
+  registered only in the published build
 
 Generated exercises go out through MusicXML rather than straight into the
 engine. That is deliberate: a generated scale then travels the exact same path
@@ -236,6 +239,16 @@ what was expected, and the numbers behind it. It names the expected notes and
 is off by default for that reason; it exists so that a stuck highlight can be
 told apart into "heard nothing" and "heard the wrong thing".
 
+**A deploy no longer leaves the home-screen app black**, and the app works
+offline. Each build names its code after its contents and GitHub Pages deletes
+the old files, so a standalone app that kept yesterday's `index.html` used to
+ask for code that was gone. The service worker in `public/sw.js` asks the
+network for the page first and serves code and recordings from its cache,
+throwing away code no cached page names any more. All thirty recordings are
+fetched when it installs, so even the first passage played back needs no
+connection. Verified against a Pages-shaped server: offline the app starts
+and plays; after a simulated deploy it loads the new code and drops the old.
+
 Listening and playing back can never both hold the device, and the buttons say
 so — each greys the other out while it runs.
 
@@ -289,14 +302,11 @@ aim at and still leaves the eyes the work of finding it on the page.
   rarer one — a cheap onset detector runs continuously and the expensive pass
   runs once per struck note. The rig already says the onset is the only moment
   worth asking about, so the two findings meet.
-- **A home-screen app goes black after a deploy.** Verified: each build emits a
-  new hashed bundle and GitHub Pages deletes the old one, so a standalone web
-  app holding a cached `index.html` asks for an asset that is now a 404, React
-  never mounts, and what is left on screen is the background colour. Pulling
-  down to refresh inside the app fixes it, as does removing and re-adding the
-  icon. A service worker serving the HTML network-first would fix it properly;
-  there is none yet, and that is also why the first playback of a session needs
-  the network.
+- **The service worker on the device.** Tested against a static server shaped
+  like GitHub Pages, not yet on the iPad or from the home screen. And a device
+  that still holds an `index.html` from before it existed can go black once
+  more, on the first launch after the deploy that brings it — pulling down to
+  refresh fixes that one last time.
 - **A page holding the microphone silences the device.** On iOS an open
   `getUserMedia` stream puts the whole audio session into record mode, and
   playback then goes quiet or mute — in other tabs and other apps too, not just
@@ -317,11 +327,6 @@ aim at and still leaves the eyes the work of finding it on the page.
   below that the switch keeps the last word. Untested on the device so far.
   The behaviour from the home screen is untested too, same class of unknown as
   Spike A.
-- **The first playback of a session needs the network.** The recordings are
-  fetched on the first press and kept, but only the ones the passage calls
-  for, and there is no service worker to hold them offline. Practising away
-  from a connection works once the browser has them cached; the first time
-  does not.
 - **Dynamics are ignored** when playing back — everything sounds equally loud,
   whatever the score marks.
 - **Pedal only where it is written**, and six of the seven pieces write none.
