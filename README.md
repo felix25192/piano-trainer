@@ -119,9 +119,11 @@ npm run build   # type check, then the production build
 ```
 
 `mic-test.html` is the device test the start screen links to: it checks
-whether a phone or tablet can supply microphone input at all. Two benches run
-in the dev server only and are never published: `pitch-lab.html` for the pitch
-detector, and `onset-lab.html` for the whole listening loop.
+whether a phone or tablet can supply microphone input at all. `model-test.html`
+times a chord-hearing model on the device itself. Three benches run in the dev
+server only and are never published: `pitch-lab.html` for the pitch detector,
+`onset-lab.html` for the whole listening loop, and `chord-lab.html` for models
+that might hear both hands.
 
 A push to `main` runs lint, tests, types and build, and publishes to GitHub
 Pages.

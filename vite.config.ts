@@ -16,10 +16,15 @@ export default defineConfig(({ command }) => ({
        * A device test that measures something other than what ships is worth
        * very little, so it is a build entry now and uses `core/pitchDetect.ts`
        * itself. Its published address is unchanged.
+       *
+       * `model-test.html` times a chord model on the device. It is published
+       * because the iPad can reach nothing else; the app never loads it, and
+       * TensorFlow.js ends up in that page's own chunks, not in the app's.
        */
       input: {
         main: "index.html",
         micTest: "mic-test.html",
+        modelTest: "model-test.html",
       },
     },
   },

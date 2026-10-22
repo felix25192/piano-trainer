@@ -1680,3 +1680,41 @@ hat keines der beiden gehoert.
 - **Die Oktaven.** Ein allgemeines Modell kann sie nicht, das ist jetzt zweimal
   gemessen. Was bleibt, ist die Einmessung je Instrument: wie stark ist die
   Oktave von C3 bei *diesem* Klavier, wenn nur C3 klingt.
+
+## Eine Zeitmessung fuer das iPad (22.10.2026)
+
+Beide Modelle sind am Laptop gemessen, keines auf dem Geraet, fuer das die App
+ist. `model-test.html` holt das nach und ist dafuer **veroeffentlicht**: das
+iPad erreicht nur eine oeffentliche Adresse. Deshalb nur Basic Pitch; Onsets
+and Velocities darf wegen der GPL nicht auf die Seite. Das Modell liegt dafuer
+jetzt in `public/models/basic-pitch/`, mit Lizenz und Herkunft; die App laedt
+es nie, und der Service Worker laesst es in Ruhe.
+
+Die Seite misst je Rechenweg, den TensorFlow.js auf dem Geraet findet -
+WebGPU, WebGL, WebAssembly - drei Dinge:
+
+- **die Rechenzeit je Anschlag**, Median aus zwoelf Laeufen, und den ersten
+  Aufruf getrennt, den die App einmal beim Start zahlen wuerde;
+- **ob richtig gerechnet wird**: jeder Weg gegen die exakte Rechnung auf dem
+  Prozessor. Safari rechnet auf der Grafik teils mit halber Genauigkeit, und
+  ein Modell, das schnell Falsches sagt, waere schlimmer als ein langsames;
+- **wie lange die Seite am Stueck blockiert ist**. Die Mikrofonschleife laeuft
+  im selben Thread alle 10 ms; was laenger blockiert, kostet sie Bilder.
+
+Eingabe ist ein gerechneter Klang, C3 links, E4 und G4 rechts, keine
+dekodierte Aufnahme - jeder Browser dekodiert MP3 ein wenig anders, und der
+Vergleich soll nur die Rechnung pruefen.
+
+Schon am Laptop zeigt sie etwas, das vorher keiner gefragt hatte: WebAssembly
+ist dort der schnellste Weg (108 ms), blockiert die Seite aber genauso lange
+am Stueck. In der App muesste es in einen eigenen Thread, einen Web Worker.
+WebGPU blockiert 6 ms. Alle Wege stimmen mit der exakten Rechnung ueberein.
+
+Nebenwirkung im Build: mit einer dritten Seite lagert Rolldown eine kleine
+gemeinsame Laufzeit aus, der Code der App heisst danach anders und ist 34
+Bytes groesser. Inhaltlich unveraendert, geprueft auf der veroeffentlichten
+Seite. TensorFlow.js steht jetzt unter den Abhaengigkeiten statt unter den
+Entwicklungsabhaengigkeiten, weil eine veroeffentlichte Seite es braucht.
+
+Die Messung selbst steht als Teil D in `docs/TESTRUNDE.md` und braucht kein
+Klavier.

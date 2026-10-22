@@ -76,6 +76,20 @@ dem Geraet noch nie.
       laesst sich das Menuett vorspielen?
 - [ ] Flugmodus wieder aus.
 
+## D. Ohne Klavier: wie schnell rechnet das iPad ein Akkordmodell?
+
+Geht jederzeit, auch unterwegs, und braucht kein Mikrofon. Gemessen wird Basic
+Pitch, das Modell, das einmal zwei Haende hoeren koennte; Onsets and
+Velocities darf wegen der GPL nicht auf die oeffentliche Seite.
+
+- [ ] In Safari <https://felix25192.github.io/piano-trainer/model-test.html>
+      oeffnen, **Messung starten**, etwa eine Minute warten, die Seite dabei
+      offen und das iPad wach lassen.
+- [ ] **Ergebnis kopieren** und in den Chat einfuegen. Falls dort "WEICHT AB"
+      steht, ist das der wichtigste Satz darin.
+- [ ] Vorher den Stromsparmodus ausschalten (Einstellungen → Batterie), er
+      bremst den Prozessor; falls er an war, das dazuschreiben.
+
 ## Zurueckmelden
 
 Die Tabelle aus A, die Antworten aus B und C, die Screenshots, die

@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>Modell-Test</title>
+<style>
+  :root {
+    --bg: #12141a; --panel: #1b1f28; --ink: #e8eaf0;
+    --muted: #8b93a7; --ok: #3ecf8e; --bad: #ff6b6b; --accent: #5b8cff;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 16px; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, sans-serif;
+  }
+  h1 { font-size: 20px; margin: 4px 0 8px; }
+  p { color: var(--muted); margin: 0 0 14px; max-width: 60ch; }
+  .card { background: var(--panel); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  button {
+    width: 100%; min-height: 52px; border: 0; border-radius: 12px; margin-top: 10px;
+    background: var(--accent); color: #fff; font: 600 17px system-ui; cursor: pointer;
+  }
+  button:disabled { background: #333a49; color: var(--muted); }
+  pre { margin: 0; font: 12px/1.6 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+
+<h1>Modell-Test</h1>
+<p>
+  Misst, wie schnell dieses Gerät Spotifys Basic Pitch rechnet, das Modell, das
+  einmal Akkorde hören könnte. Jeder Rechenweg wird gegen die exakte Rechnung
+  auf dem Prozessor verglichen, und gemessen wird auch, wie lange er die Seite
+  dabei aufhält. Etwa eine Minute; die Seite dabei offen lassen.
+</p>
+
+<div class="card">
+  <pre id="out">bereit</pre>
+  <button id="go">Messung starten</button>
+  <button id="copy" hidden>Ergebnis kopieren</button>
+</div>
+
+<script type="module">
+import * as tf from "@tensorflow/tfjs-core";
+import "@tensorflow/tfjs-backend-cpu";
+import "@tensorflow/tfjs-backend-webgl";
+import "@tensorflow/tfjs-backend-webgpu";
+import { setWasmPaths } from "@tensorflow/tfjs-backend-wasm";
+import { loadGraphModel } from "@tensorflow/tfjs-converter";
+import wasmPlain from "@tensorflow/tfjs-backend-wasm/dist/tfjs-backend-wasm.wasm?url";
+import wasmSimd from "@tensorflow/tfjs-backend-wasm/dist/tfjs-backend-wasm-simd.wasm?url";
+import wasmThreaded from "@tensorflow/tfjs-backend-wasm/dist/tfjs-backend-wasm-threaded-simd.wasm?url";
+
+setWasmPaths({
+  "tfjs-backend-wasm.wasm": wasmPlain,
+  "tfjs-backend-wasm-simd.wasm": wasmSimd,
+  "tfjs-backend-wasm-threaded-simd.wasm": wasmThreaded,
+});
+
+// Fest im Modell: 22050 Hz, ein Fenster von zwei Sekunden minus einem Hop,
+// heraus kommen 172 Bilder zu je 256 Samples und je Bild 88 Tasten ab A0.
+const RATE = 22050;
+const WINDOW = 43844;
+const HOP = 256;
+const FRAMES = 172;
+const KEYS = 88;
+const A0 = 21;
+
+const out = document.getElementById("out");
+const lines = [];
+const show = () => (out.textContent = lines.join("\n"));
+
+/*
+ * Das Signal: ein Klang zweier Hände, C3 links, E4 und G4 rechts, angeschlagen
+ * 250 ms vor dem Ende des Fensters - so, wie die App nach einem Anschlag fragen
+ * würde. Gerechnet statt aus den Aufnahmen dekodiert, weil jeder Browser MP3
+ * ein wenig anders dekodiert; so bekommt jedes Gerät bitgenau dieselbe Eingabe.
+ */
+const STRUCK = [48, 64, 67];
+const AT = WINDOW / RATE - 0.25;
+function testSignal() {
+  const x = new Float32Array(WINDOW);
+  let seed = 1;
+  for (let i = 0; i < WINDOW; i++) {
+    seed = (seed * 16807) % 2147483647;
+    x[i] = ((seed / 2147483647) * 2 - 1) * 0.0008;
+  }
+  for (const midi of STRUCK) {
+    const f0 = 440 * Math.pow(2, (midi - 69) / 12);
+    for (let i = Math.floor(AT * RATE); i < WINDOW; i++) {
+      const t = i / RATE - AT;
+      const env = Math.exp(-3 * t) * Math.min(1, t / 0.003);
+      let v = 0;
+      for (let h = 1; h <= 8; h++) v += Math.sin(2 * Math.PI * f0 * h * t) / h;
+      x[i] += 0.12 * env * v;
+    }
+  }
+  return x;
+}
+
+/** Ein Fenster rechnen; die Anschlags- und die Klingt-Werte, je 172 × 88. */
+async function run(model, input) {
+  const [onsets, frames] = model.execute(input, ["Identity_2", "Identity_1"]);
+  const [on, fr] = await Promise.all([onsets.data(), frames.data()]);
+  tf.dispose([onsets, frames]);
+  return { on, fr };
+}
+
+/**
+ * Wie lange die Seite am Stück blockiert ist, während gerechnet wird. In der
+ * App fragt die Mikrofonschleife alle 10 ms ab; was den Hauptthread länger
+ * aufhält, kostet sie Bilder.
+ */
+function watchMainThread() {
+  let last = performance.now(), worst = 0, running = true;
+  const tick = () => {
+    const now = performance.now();
+    worst = Math.max(worst, now - last);
+    last = now;
+    if (running) setTimeout(tick, 1);
+  };
+  setTimeout(tick, 1);
+  return () => {
+    running = false;
+    return worst;
+  };
+}
+
+/** Was die App aus den Werten ablesen würde: welche Tasten angeschlagen sind und klingen. */
+function heard({ on, fr }) {
+  const k = Math.round(AT * RATE / HOP);
+  const keys = [];
+  for (let midi = A0; midi < A0 + KEYS; midi++) {
+    let struck = 0, held = 0;
+    for (let j = k - 2; j <= k + 2; j++) struck = Math.max(struck, on[j * KEYS + midi - A0]);
+    for (let j = k + 1; j <= k + 4; j++) held = Math.max(held, fr[j * KEYS + midi - A0]);
+    if (struck >= 0.5 && held >= 0.5) keys.push(midi);
+  }
+  return keys;
+}
+
+const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
+
+function environment() {
+  const gl = document.createElement("canvas").getContext("webgl2");
+  const info = gl?.getExtension("WEBGL_debug_renderer_info");
+  return [
+    `Gerät: ${navigator.userAgent}`,
+    `Kerne: ${navigator.hardwareConcurrency ?? "?"}, WebGL 2: ${gl ? "ja" : "nein"}` +
+      `${info ? `, ${gl.getParameter(info.UNMASKED_RENDERER_WEBGL)}` : ""}` +
+      `, WebGPU: ${"gpu" in navigator ? "ja" : "nein"}, isoliert: ${self.crossOriginIsolated ? "ja" : "nein"}`,
+  ];
+}
+
+async function measure() {
+  lines.length = 0;
+  lines.push(...environment(), "");
+  show();
+
+  // Schon das Laden legt Tensoren an, also vorher einen Rechenweg wählen: den exakten.
+  await tf.setBackend("cpu");
+  const t0 = performance.now();
+  const model = await loadGraphModel(`${import.meta.env.BASE_URL}models/basic-pitch/model.json`);
+  lines.push(`Modell geladen in ${(performance.now() - t0).toFixed(0)} ms`, "");
+  show();
+
+  const signal = testSignal();
+
+  // Die exakte Rechnung zuerst: der Prozessor rechnet in voller Genauigkeit.
+  lines.push("Exakte Rechnung auf dem Prozessor (cpu), einmal, dauert einige Sekunden …");
+  show();
+  const refInput = tf.tensor3d(signal, [1, WINDOW, 1]);
+  const t1 = performance.now();
+  const reference = await run(model, refInput);
+  refInput.dispose();
+  lines[lines.length - 1] = `cpu: ${(performance.now() - t1).toFixed(0)} ms je Anschlag, gehört ${heard(reference).join(" ")} (gespielt ${STRUCK.join(" ")})`;
+  show();
+
+  for (const backend of ["webgpu", "webgl", "wasm"]) {
+    lines.push(`${backend}: läuft …`);
+    show();
+    let ok = false;
+    try {
+      ok = await tf.setBackend(backend);
+      await tf.ready();
+    } catch {
+      ok = false;
+    }
+    if (!ok || tf.getBackend() !== backend) {
+      lines[lines.length - 1] = `${backend}: auf diesem Gerät nicht verfügbar`;
+      show();
+      continue;
+    }
+    try {
+      const input = tf.tensor3d(signal, [1, WINDOW, 1]);
+      // Der erste Aufruf übersetzt und lädt alles; die App zahlt ihn einmal beim Start.
+      const tFirst = performance.now();
+      const first = await run(model, input);
+      const firstMs = performance.now() - tFirst;
+      await run(model, input);
+
+      const times = [];
+      for (let i = 0; i < 12; i++) {
+        const s = performance.now();
+        await run(model, input);
+        times.push(performance.now() - s);
+      }
+      const pauses = [];
+      for (let i = 0; i < 4; i++) {
+        const stop = watchMainThread();
+        await run(model, input);
+        await new Promise((r) => setTimeout(r, 20));
+        pauses.push(stop());
+      }
+      input.dispose();
+
+      let onDiff = 0, frDiff = 0;
+      for (let j = 0; j < FRAMES * KEYS; j++) {
+        onDiff = Math.max(onDiff, Math.abs(first.on[j] - reference.on[j]));
+        frDiff = Math.max(frDiff, Math.abs(first.fr[j] - reference.fr[j]));
+      }
+      const agrees = onDiff < 0.05 && frDiff < 0.05;
+      const extra = backend === "webgl" ? `, float32: ${tf.env().getBool("WEBGL_RENDER_FLOAT32_ENABLED") ? "ja" : "nein"}` : "";
+      lines[lines.length - 1] =
+        `${backend}: ${median(times).toFixed(0)} ms je Anschlag (Median, schnellster ${Math.min(...times).toFixed(0)}, ` +
+        `langsamster ${Math.max(...times).toFixed(0)}), erster Aufruf ${firstMs.toFixed(0)} ms${extra}\n` +
+        `   Seite am Stück blockiert: bis ${Math.max(...pauses).toFixed(0)} ms\n` +
+        `   gegen die exakte Rechnung: angeschlagen ±${onDiff.toFixed(3)}, klingt ±${frDiff.toFixed(3)} ` +
+        `→ ${agrees ? "stimmt" : "WEICHT AB"}, gehört ${heard(first).join(" ") || "nichts"}`;
+    } catch (e) {
+      lines[lines.length - 1] = `${backend}: Fehler – ${e?.message ?? e}`;
+    }
+    show();
+  }
+
+  lines.push(
+    "",
+    "Antwortzeit in der App ≈ 250 ms Wartezeit + Rechenzeit.",
+    "Blockiert die Seite länger als 10 ms, verlöre die Mikrofonschleife dabei Bilder.",
+    "fertig",
+  );
+  show();
+}
+
+const go = document.getElementById("go");
+const copy = document.getElementById("copy");
+go.addEventListener("click", async () => {
+  go.disabled = true;
+  copy.hidden = true;
+  try {
+    await measure();
+  } catch (e) {
+    lines.push("", `Abgebrochen: ${e?.message ?? e}`);
+    show();
+  }
+  go.disabled = false;
+  go.textContent = "Noch einmal messen";
+  copy.hidden = false;
+});
+copy.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(out.textContent);
+    copy.textContent = "Kopiert";
+  } catch {
+    getSelection().selectAllChildren(out);
+    copy.textContent = "Markiert – bitte selbst kopieren";
+  }
+});
+</script>
+</body>
+</html>

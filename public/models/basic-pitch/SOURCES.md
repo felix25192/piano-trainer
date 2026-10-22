@@ -14,10 +14,12 @@ b142a95737a52e1e412d5f92e73d8bb80dfe8d04941acc0702f11f4524fb377c  group1-shard1o
 ```
 
 Only the model is used, not the package. The package depends on
-TensorFlow.js 3 and installs 282 MB to do so; the bench loads the model with
-the current TensorFlow.js 4 instead, which needs four of its parts as
-development dependencies and nothing in the published app.
+TensorFlow.js 3 and installs 282 MB to do so; the model is loaded with the
+current TensorFlow.js 4 instead, also Apache 2.0, and this licence covers it
+too.
 
-This folder is for `chord-lab.html` and is never published: Vite builds only
-`index.html` and `mic-test.html`. `model.js` is the bench's adapter for the
-model, written here; it is not from the package.
+This folder is published, for one page: `model-test.html` times the model on
+the device itself, which needs a public address. The app never loads it, and
+the service worker leaves it alone. `chord-lab.html` reads it from here as
+well, through `lab/basic-pitch/model.js`, its adapter, written here and not
+from the package.

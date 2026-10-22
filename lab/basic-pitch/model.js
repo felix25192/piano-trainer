@@ -119,7 +119,7 @@ async function timing(backend, runs) {
  * RATE. Gibt die Zeilen zurück, die der Prüfstand oben zeigt.
  */
 export async function prepare(render) {
-  model = await loadGraphModel("/lab/basic-pitch/model.json");
+  model = await loadGraphModel("/models/basic-pitch/model.json");
   const lines = [`WebGL: ${renderer()}`];
   lines.push(`Rechenzeit je Anschlag (ein Fenster, Median), webgl: ${(await timing("webgl", 15)).toFixed(0)} ms` +
     `, float32: ${tf.env().getBool("WEBGL_RENDER_FLOAT32_ENABLED")}`);

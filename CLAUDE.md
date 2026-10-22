@@ -108,17 +108,26 @@ strike, and the app never sees one. That difference once hid a loop that named
 chords from the recordings the way `SampledPiano` plays them and asks the model
 once per strike, as the app would, then counts both what it accepts and what it
 would wave through had a hand misread. `?model=` picks the model, each a
-`model.js` with the same exports: `basic-pitch` (Spotify, Apache 2.0, in
-`lab/basic-pitch/`, never published; TensorFlow.js 4 is a dev dependency for
-it) and `onsets-velocities` (Fernandez 2023). **The latter is GPL-3.0 and lives
-only in `lab/local/`, which git ignores** — it was exported to ONNX from the
+`model.js` with the same exports: `basic-pitch` (Spotify, Apache 2.0, adapter
+in `lab/basic-pitch/`, model in `public/models/basic-pitch/`) and
+`onsets-velocities` (Fernandez 2023). **The latter is GPL-3.0 and lives only
+in `lab/local/`, which git ignores** — it was exported to ONNX from the
 original in a separate Python environment, and onnxruntime-web is a dev
 dependency for it. Do not commit anything from there; `docs/PLAN.md`,
-22.10.2026, says why, and the README in that folder how to rebuild it. **Give Basic Pitch one window per
-call**: several exceed the GPU's texture limit and TensorFlow.js silently
-returns other numbers, which the bench checks on every run. `?delays=0.25,0.6`
-sets the waiting times. <http://localhost:5173/chord-lab.html>, about five
-minutes per model, and only with the window in view if the timings matter.
+22.10.2026, says why, and the README in that folder how to rebuild it. **Give
+Basic Pitch one window per call**: several exceed the GPU's texture limit and
+TensorFlow.js silently returns other numbers, which the bench checks on every
+run. `?delays=0.25,0.6` sets the waiting times.
+<http://localhost:5173/chord-lab.html>, about five minutes per model, and only
+with the window in view if the timings matter.
+
+`model-test.html` is the one model page that is **published**, because only a
+public address reaches the iPad: it times Basic Pitch on the device in every
+backend TensorFlow.js offers there — WebGPU, WebGL, WebAssembly — checks each
+against the exact CPU result, and measures how long each blocks the main
+thread, where the microphone loop runs every 10 ms. TensorFlow.js is a
+dependency for this page alone and lands in its own chunks; the app never
+loads it. <https://felix25192.github.io/piano-trainer/model-test.html>.
 
 **Deployment is automatic**: a push to `main` runs lint, tests, types and build,
 and publishes to <https://felix25192.github.io/piano-trainer/>.
