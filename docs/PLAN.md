@@ -1456,3 +1456,111 @@ Laptop ans Kawai kommt, ist noch offen.
 Lesematerial. Kostenlos zu probieren bleibt der "Web MIDI Browser" aus dem App
 Store, der Webseiten auf dem iPad MIDI gibt; er setzt nur voraus, dass
 `MidiInput` angeschlossen ist.
+
+## Basic Pitch nachgemessen: kein Weg zu zwei Haenden (22.10.2026)
+
+Die Frage: Kann Spotifys Basic Pitch, was der einstimmige Detektor nicht kann
+- zwei Haende zugleich hoeren -, schnell genug, und ohne zu luegen?
+
+### Der Pruefstand
+
+`chord-lab.html`, neben `onset-lab.html`. Die Klaenge entstehen aus den
+dreissig Aufnahmen, wie `SampledPiano` sie spielt: die naechste Aufnahme, um
+hoechstens einen Halbton verschoben. Gefragt wird das Modell, wie die App es
+fragen wuerde: einmal je Anschlag, ueber die zwei Sekunden, die 80, 120 oder
+250 ms nach dem Anschlag enden. Die Faelle: alle 88 Tasten einzeln, 120
+zufaellige Paare aus linker und rechter Hand, 48 Oktaven und Doppeloktaven, 24
+Dreiklaenge mit Basston, und je 60 neue Klaenge ueber einem alten - mit Pedal
+nach 300 und 600 ms, und im Legato.
+
+Gezaehlt wird zweierlei. Was richtig gespielt wurde und angenommen wird. Und
+was durchgewinkt wuerde, haette sich eine Hand verlesen: ein Ton um einen
+Halbton oder eine Oktave daneben, ein vergessener Ton, einer zu viel. Das
+Zweite ist die App, die luegt.
+
+Uebernommen ist nur das Modell, 900 KB, Apache 2.0, in `lab/basic-pitch/`. Das
+Paket haette TensorFlow.js 3 mitgebracht, 282 MB; geladen wird das Modell mit
+TensorFlow.js 4, vier Teile als Entwicklungsabhaengigkeit. In der
+veroeffentlichten App aendert sich nichts.
+
+### Ein Fehler im Pruefstand, und wie er auffiel
+
+Die ersten Laeufe gaben dem Modell 16 Fenster in einem Aufruf. Es nimmt das an
+und liefert dann andere Zahlen: "angeschlagen" bis zu 0,20 daneben, "klingt"
+nur noch 0,09 und 0,10 im Wechsel. Aufgefallen ist es, weil "klingt" auch fuer
+gespielte Toene bei 0,09 lag - ein Messergebnis sieht anders aus. Spotifys
+eigener Code ruft das Modell nur mit einem Fenster auf. Jetzt tut der
+Pruefstand das auch und vergleicht bei jedem Lauf beides. Die Zahlen der
+ersten Laeufe sind verworfen; die ersten, ernuechternden, waren also nicht
+einmal richtig.
+
+### Ergebnis
+
+**Rechenzeit**: 160 bis 200 ms je Anschlag auf der eingebauten Grafik des
+Laptops (Radeon 740M, WebGL), 3,7 bis 4,9 s ohne Grafik. Die Antwort kaeme
+damit rund 300 ms nach dem Anschlag statt nach 110. Auf dem iPad ungemessen.
+
+**Die Wartezeit ist fast gleichgueltig**: 80 ms nach dem Anschlag sind kaum
+schlechter als 250.
+
+**Allein, ohne Erwartung, taugt es nicht**: von 88 Einzeltoenen meldet es 22
+genau richtig, von 120 Paaren keines. Es meldet die Obertoene als Toene.
+
+**Warum**, 120 ms nach dem Anschlag, 10 %, Median, 90 %:
+
+| | angeschlagen | klingt |
+|---|---|---|
+| Einzelton gespielt | 0,87 0,94 0,97 | 0,73 0,85 0,90 |
+| die Oktave darueber, nicht gespielt | 0,21 0,70 0,89 | 0,11 0,17 0,51 |
+| Oktave beider Haende, der obere Ton | 0,71 0,89 0,93 | 0,41 0,64 0,77 |
+| zwei Haende, links + Oktave, nicht gespielt | 0,59 0,78 0,86 | 0,11 0,23 0,48 |
+
+Fuer "angeschlagen" ist der Oberton fast so laut wie der gespielte Ton.
+"Klingt" trennt besser, aber nicht sauber: der obere Ton einer gespielten
+Oktave und der Oberton darunter ueberlappen.
+
+**Mit Erwartung geprueft** - jede erwartete Taste angeschlagen und klingend,
+sonst nichts Neues klingend, beide Schwellen 0,5 als beste Wahl aus einem
+Raster -, 120 ms nach dem Anschlag:
+
+| | angenommen | durchgewinkt |
+|---|---|---|
+| zwei Haende, je ein Ton | 96/120 | 24 von 2372 Verlesungen |
+| Oktave und Doppeloktave | 35/48 | 12 von 864 |
+| Dreiklang rechts, Basston links | 11/24 | 11 von 840 |
+| neuer Klang ueber altem, Pedal | 48/60, 54/60 | 15 und 8 von 1194 |
+| zusammen | **351/460** | **87 von 8360**, davon ein Ton zu viel 47 von 792 |
+
+Keine Schwelle zwischen 0,3 und 0,6 kam ganz ohne Luege aus.
+
+### Was das heisst
+
+**Nicht uebernommen.** Ein Viertel der richtigen Anschlaege bliebe haengen,
+beim Dreiklang mit Bass mehr als die Haelfte, und etwa jeder siebzehnte
+zusaetzliche Ton ginge durch. Der einstimmige Weg schafft auf seinem
+Pruefstand 26 von 26 im Legato, ohne Luege.
+
+Die Ursache liegt nicht am Modell allein. Ein Oberton und ein gespielter Ton
+sind physikalisch fast dasselbe Signal, und auch ein Spitzenmodell nur fuer
+Klavier (Kong u. a., 2020) nennt Oktavfehler als haeufigste Fehlerquelle. Ein
+Modell, das das Instrument nicht kennt, kann an dieser Stelle nur raten. Ein
+Verfahren, das es kennt, koennte vergleichen: wie stark ist die Oktave von C3
+bei *diesem* Klavier, wenn nur C3 klingt?
+
+Grenzen des Pruefstands: die Aufnahmen entstanden 12 cm ueber den Saiten, hell
+und obertonreich, ohne Raum, in einer Anschlagstaerke. Am Instrument kann es
+besser oder schlechter aussehen; besser als "nicht zu gebrauchen" muesste es
+erst werden.
+
+### Was offen bleibt
+
+Drei Wege, noch nicht entschieden:
+
+- **Ein Modell nur fuer Klavier**, etwa "Onsets and Velocities" (2023, rund 3,1
+  Millionen Parameter, laut Paper echtzeitfaehig). Lizenz und Weg in den
+  Browser sind ungeprueft. Der Pruefstand misst es mit wenig Umbau.
+- **Eine eigene Pruefung mit Einmessung je Instrument**: jede Taste einmal
+  aufnehmen, dann weiss die Pruefung, was ein Ton allein an Obertoenen
+  mitbringt. Am Kawai sagt MIDI beim Einmessen, welche Taste klang.
+- **Eine Mischung**: Basic Pitch schlaegt vor, die eigene Pruefung entscheidet
+  dort, wo ein erwarteter Ton auf dem Oberton eines anderen liegt.

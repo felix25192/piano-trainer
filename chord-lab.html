@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prüfstand: Akkorde</title>
+<style>
+  :root { --bg:#12141a; --panel:#1b1f28; --ink:#e8eaf0; --muted:#8b93a7; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--ink);
+         font:14px/1.5 system-ui, sans-serif; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  p.lead { color:var(--muted); margin:0 0 16px; max-width:66ch; }
+  pre { background:var(--panel); padding:12px; border-radius:8px; overflow-x:auto;
+        font:12px/1.6 ui-monospace, monospace; max-width:1100px; }
+</style>
+</head>
+<body>
+
+<h1>Prüfstand: Akkorde</h1>
+<p class="lead">
+  Misst, ob Spotifys Basic Pitch kann, was der einstimmige Detektor nicht kann:
+  zwei Hände zugleich hören. Die Klänge entstehen aus den dreißig Aufnahmen aus
+  <code>public/piano/</code>, so wie <code>adapters/SampledPiano.ts</code> sie
+  spielt — die nächste Aufnahme, um höchstens einen Halbton verschoben. Gefragt
+  wird das Modell, wie die App es fragen würde: einmal je Anschlag, über die
+  letzten zwei Sekunden, die eine bestimmte Zeit nach dem Anschlag enden. Ein
+  paar Minuten. Nur für die Entwicklung, wird nicht veröffentlicht.
+</p>
+
+<pre id="summary">lädt…</pre>
+
+<script type="module">
+import * as tf from "@tensorflow/tfjs-core";
+import "@tensorflow/tfjs-backend-webgl";
+import "@tensorflow/tfjs-backend-cpu";
+import { loadGraphModel } from "@tensorflow/tfjs-converter";
+
+// Fest im Modell: 22050 Hz, ein Fenster von zwei Sekunden minus einem Hop,
+// heraus kommen 172 Bilder zu je 256 Samples und je Bild 88 Tasten ab A0.
+const RATE = 22050;
+const WINDOW = 43844;
+const HOP = 256;
+const FRAMES = 172;
+const KEYS = 88;
+const A0 = 21;
+
+/** Wie lange nach dem Anschlag das Fenster endet, also wie lange die App wartet. */
+const DELAYS = [0.08, 0.12, 0.25];
+/** Ab hier gilt eine Taste als angeschlagen; dazu ein strengerer und ein lockerer Wert. */
+const THRESHOLDS = [0.3, 0.5, 0.7];
+
+const lines = [];
+const show = () => (document.getElementById("summary").textContent = lines.join("\n"));
+
+// Dieselben Dateien und dieselbe Zuordnung wie in adapters/SampledPiano.ts.
+const SAMPLES = [
+  "A0","C1","Ds1","Fs1","A1","C2","Ds2","Fs2","A2","C3","Ds3","Fs3",
+  "A3","C4","Ds4","Fs4","A4","C5","Ds5","Fs5","A5","C6","Ds6","Fs6",
+  "A6","C7","Ds7","Fs7","A7","C8",
+];
+const sampleFor = (midi) => Math.min(Math.max(Math.round((midi - A0) / 3), 0), SAMPLES.length - 1);
+
+lines.push("Modell und Aufnahmen werden geladen…");
+show();
+
+const model = await loadGraphModel("/lab/basic-pitch/model.json");
+
+/** Eine Aufnahme als Mono bei 22050 Hz, vorne bis zum Anschlag gekürzt, hinten nach 4 s. */
+const decoder = new OfflineAudioContext(1, 1, RATE);
+async function load(file) {
+  const raw = await fetch(`/piano/${file}.mp3`).then((r) => r.arrayBuffer());
+  const buf = await decoder.decodeAudioData(raw);
+  const mono = new Float32Array(buf.length);
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const data = buf.getChannelData(c);
+    for (let i = 0; i < buf.length; i++) mono[i] += data[i] / buf.numberOfChannels;
+  }
+  let peak = 0;
+  for (const v of mono) peak = Math.max(peak, Math.abs(v));
+  let start = 0;
+  while (start < mono.length && Math.abs(mono[start]) < peak * 0.01) start++;
+  const cut = mono.subarray(start, start + 4 * RATE);
+  const out = new AudioBuffer({ length: cut.length, sampleRate: RATE, numberOfChannels: 1 });
+  out.copyToChannel(cut, 0);
+  return out;
+}
+const recordings = await Promise.all(SAMPLES.map(load));
+
+/**
+ * Ein Signal aus Anschlägen, gerendert wie in der App. `until` dämpft einen Ton
+ * ab da über etwa 30 ms ab; ohne klingt er weiter, wie mit Pedal. Dazu leises
+ * Rauschen, wie in onset-lab.html.
+ */
+async function render(strikes, seconds) {
+  const ctx = new OfflineAudioContext(1, Math.ceil(seconds * RATE), RATE);
+  for (const s of strikes) {
+    const i = sampleFor(s.midi);
+    const source = new AudioBufferSourceNode(ctx, {
+      buffer: recordings[i],
+      playbackRate: Math.pow(2, (s.midi - (A0 + 3 * i)) / 12),
+    });
+    const gain = new GainNode(ctx, { gain: s.gain ?? 0.5 });
+    if (s.until !== undefined) gain.gain.setTargetAtTime(0, s.until, 0.01);
+    source.connect(gain).connect(ctx.destination);
+    source.start(s.at);
+  }
+  const out = (await ctx.startRendering()).getChannelData(0);
+  let seed = 1;
+  for (let i = 0; i < out.length; i++) {
+    seed = (seed * 16807) % 2147483647;
+    out[i] += ((seed / 2147483647) * 2 - 1) * 0.0005 * 1.7;
+  }
+  return out;
+}
+
+/** Die WINDOW Samples, die zur Zeit `end` enden; vor dem Anfang Stille. */
+function windowEnding(signal, end) {
+  const w = new Float32Array(WINDOW);
+  const last = Math.round(end * RATE);
+  for (let i = 0; i < WINDOW; i++) {
+    const j = last - WINDOW + i;
+    if (j >= 0 && j < signal.length) w[i] = signal[j];
+  }
+  return w;
+}
+
+/**
+ * Ein Fenster nach dem anderen; je Fenster die Anschlagswerte, 172 × 88. Die
+ * Werte für "klingt" hängen als `.frames` daran, für den Vergleich.
+ *
+ * Nie mehrere Fenster in einem Aufruf, obwohl das Modell eine Stapelgröße
+ * annimmt: mit mehreren lieferte "klingt" nur noch 0,09 und 0,10 im Wechsel,
+ * mit einem stimmte es. Spotifys eigener Code ruft es ebenfalls nur mit einem
+ * Fenster auf. Die Kontrolle beim Einmessen unten vergleicht beides.
+ */
+async function inferOne(w) {
+  const input = tf.tensor3d(w, [1, WINDOW, 1]);
+  const [onsets, frames] = model.execute(input, ["Identity_2", "Identity_1"]);
+  const [on, fr] = await Promise.all([onsets.data(), frames.data()]);
+  tf.dispose([input, onsets, frames]);
+  on.frames = fr;
+  return on;
+}
+async function infer(windows) {
+  const outs = [];
+  for (const w of windows) outs.push(await inferOne(w));
+  return outs;
+}
+/** Dasselbe gestapelt, nur für die Kontrolle. */
+async function inferStacked(windows) {
+  const flat = new Float32Array(windows.length * WINDOW);
+  windows.forEach((w, b) => flat.set(w, b * WINDOW));
+  const input = tf.tensor3d(flat, [windows.length, WINDOW, 1]);
+  const [onsets, frames] = model.execute(input, ["Identity_2", "Identity_1"]);
+  const [on, fr] = await Promise.all([onsets.data(), frames.data()]);
+  tf.dispose([input, onsets, frames]);
+  return windows.map((_, b) => {
+    const out = on.subarray(b * FRAMES * KEYS, (b + 1) * FRAMES * KEYS);
+    out.frames = fr.subarray(b * FRAMES * KEYS, (b + 1) * FRAMES * KEYS);
+    return out;
+  });
+}
+
+/** Wie sicher das Modell ist, dass `midi` kurz nach Bild k klingt: das Höchste über die nächsten 4 Bilder. */
+function sounding(out, k, midi) {
+  let best = 0;
+  for (let j = k + 1; j <= k + 4; j++) {
+    if (j >= 0 && j < FRAMES) best = Math.max(best, out.frames[j * KEYS + midi - A0]);
+  }
+  return best;
+}
+
+/** Das Bild, in dem ein Anschlag zur Zeit `at` liegt, wenn das Fenster bei `end` endet. */
+let offset = 0;
+const frameOf = (at, end) => Math.round((at - (end - WINDOW / RATE)) * (RATE / HOP)) + offset;
+
+/** Wie sicher das Modell ist, dass `midi` um Bild k herum angeschlagen wurde: das Höchste über ±2 Bilder. */
+function score(onsets, k, midi) {
+  let best = 0;
+  for (let j = k - 2; j <= k + 2; j++) {
+    if (j >= 0 && j < FRAMES) best = Math.max(best, onsets[j * KEYS + midi - A0]);
+  }
+  return best;
+}
+
+// Für die Konsole: jeder Schritt einzeln aufrufbar.
+window.bench = { render, windowEnding, infer, frameOf: (at, end) => frameOf(at, end), score, sounding };
+
+/** Zufall mit festem Startwert, damit jeder Lauf dieselben Fälle prüft. */
+function random(seed) {
+  return () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+}
+const pick = (rnd, lo, hi) => lo + Math.floor(rnd() * (hi - lo + 1));
+
+// --- Rechenzeit ---------------------------------------------------------
+
+function renderer() {
+  const gl = document.createElement("canvas").getContext("webgl2");
+  const info = gl?.getExtension("WEBGL_debug_renderer_info");
+  return info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : "unbekannt";
+}
+
+/** Ein Fenster, gemessen von der Eingabe bis die Zahlen im Speicher sind. */
+async function timing(backend, runs) {
+  await tf.setBackend(backend);
+  await tf.ready();
+  const input = tf.randomUniform([1, WINDOW, 1], -0.1, 0.1);
+  const once = async () => {
+    const t0 = performance.now();
+    const out = model.execute(input, "Identity_2");
+    await out.data();
+    out.dispose();
+    return performance.now() - t0;
+  };
+  for (let i = 0; i < 3; i++) await once();
+  const times = [];
+  for (let i = 0; i < runs; i++) times.push(await once());
+  input.dispose();
+  times.sort((a, b) => a - b);
+  return times[Math.floor(times.length / 2)];
+}
+
+lines.length = 0;
+lines.push(`WebGL: ${renderer()}`);
+lines.push(`Rechenzeit je Anschlag (ein Fenster, Median), webgl: ${(await timing("webgl", 15)).toFixed(0)} ms` +
+  `, float32: ${tf.env().getBool("WEBGL_RENDER_FLOAT32_ENABLED")}`);
+show();
+lines.push(`Rechenzeit je Anschlag (ein Fenster, Median), cpu:   ${(await timing("cpu", 5)).toFixed(0)} ms`);
+lines.push("");
+show();
+await tf.setBackend("webgl");
+await tf.ready();
+
+// --- Wo im Fenster ein Anschlag landet ---------------------------------
+
+/*
+ * Vorher wissen, in welchem Bild das Modell einen Anschlag meldet, sonst
+ * misst alles Weitere am falschen Bild. Gemessen mit viel Zeit nach dem
+ * Anschlag, also da, wo das Modell am sichersten ist.
+ */
+{
+  const probe = [36, 48, 55, 60, 64, 67, 72, 79, 84];
+  const windows = [];
+  for (const midi of probe) {
+    const signal = await render([{ midi, at: 1 }], 2.1);
+    windows.push(windowEnding(signal, 2.0));
+  }
+  const outs = await infer(windows);
+  const shifts = outs.map((onsets, i) => {
+    const k = frameOf(1, 2.0);
+    let best = k, top = -1;
+    for (let j = k - 10; j <= k + 10; j++) {
+      const v = onsets[j * KEYS + probe[i] - A0];
+      if (v > top) { top = v; best = j; }
+    }
+    return best - k;
+  });
+  offset = Math.round(shifts.reduce((a, b) => a + b, 0) / shifts.length);
+  lines.push(`Anschlag liegt ${offset} Bilder neben der Rechnung (je Ton: ${shifts.join(" ")}); so korrigiert.`);
+  const held = outs.map((o, i) => sounding(o, frameOf(1, 2.0), probe[i]).toFixed(2));
+  lines.push(`Kontrolle "klingt" beim gespielten Ton, sollte deutlich über 0,5 liegen: ${held.join(" ")}`);
+  // Gestapelt gegen einzeln: wie weit weichen die Werte voneinander ab?
+  const stacked = await inferStacked(windows);
+  let onDiff = 0, frDiff = 0;
+  stacked.forEach((s, i) => {
+    for (let j = 0; j < FRAMES * KEYS; j++) {
+      onDiff = Math.max(onDiff, Math.abs(s[j] - outs[i][j]));
+      frDiff = Math.max(frDiff, Math.abs(s.frames[j] - outs[i].frames[j]));
+    }
+  });
+  lines.push(`Kontrolle gestapelt gegen einzeln, größte Abweichung: angeschlagen ${onDiff.toFixed(3)}, klingt ${frDiff.toFixed(3)}`);
+  lines.push("");
+  show();
+}
+
+// --- Die Fälle -----------------------------------------------------------
+
+/*
+ * Jeder Fall ist ein Signal und ein Anschlag darin, nach dem gefragt wird:
+ * `at` ist seine Zeit, `played` die Tasten, die dort angeschlagen wurden. Was
+ * vorher klingt, steht in `before` - es darf nicht als neu gemeldet werden.
+ */
+const cases = {};
+
+// A: jede Taste einzeln aus der Stille.
+cases["Einzelton, alle 88 Tasten"] = [];
+for (let midi = A0; midi < A0 + KEYS; midi++) {
+  cases["Einzelton, alle 88 Tasten"].push({ strikes: [{ midi, at: 1 }], at: 1, played: [midi] });
+}
+
+// B: zwei Hände, je ein Ton, links C2 bis H3, rechts C4 bis C6.
+{
+  const rnd = random(7);
+  const list = (cases["Zwei Hände, je ein Ton"] = []);
+  for (let i = 0; i < 120; i++) {
+    const left = pick(rnd, 36, 59), right = pick(rnd, 60, 84);
+    list.push({ strikes: [{ midi: left, at: 1 }, { midi: right, at: 1 }], at: 1, played: [left, right] });
+  }
+}
+
+// C: im Oktav- und Doppeloktavabstand - die Teiltöne des unteren liegen genau auf dem oberen.
+{
+  const list = (cases["Zwei Hände, Oktave und Doppeloktave"] = []);
+  for (let left = 36; left <= 59; left++) {
+    for (const up of [12, 24]) {
+      list.push({ strikes: [{ midi: left, at: 1 }, { midi: left + up, at: 1 }], at: 1, played: [left, left + up] });
+    }
+  }
+}
+
+// D: Dreiklang rechts in Grundstellung, Grundton links eine Oktave tiefer - vier Töne.
+{
+  const list = (cases["Dreiklang rechts, Basston links"] = []);
+  for (let root = 60; root < 72; root++) {
+    for (const third of [4, 3]) {
+      const chord = [root - 12, root, root + third, root + 7];
+      list.push({ strikes: chord.map((midi) => ({ midi, at: 1 })), at: 1, played: chord });
+    }
+  }
+}
+
+// E, F: ein neuer Klang zweier Hände über einem alten. Mit Pedal klingt der alte weiter,
+// im Fingerlegato fällt sein Dämpfer 30 ms nach dem neuen Anschlag.
+for (const [label, pedal, gap] of [
+  ["Neuer Klang über altem, Pedal, 300 ms", true, 0.3],
+  ["Neuer Klang über altem, Pedal, 600 ms", true, 0.6],
+  ["Neuer Klang über altem, Legato, 300 ms", false, 0.3],
+]) {
+  const rnd = random(11);
+  const list = (cases[label] = []);
+  while (list.length < 60) {
+    const old = [pick(rnd, 36, 59), pick(rnd, 60, 84)];
+    const now = [pick(rnd, 36, 59), pick(rnd, 60, 84)];
+    if (now.some((m) => old.includes(m))) continue;
+    const at = 1 + gap;
+    const until = pedal ? undefined : at + 0.03;
+    list.push({
+      strikes: [...old.map((midi) => ({ midi, at: 1, until })), ...now.map((midi) => ({ midi, at }))],
+      at,
+      played: now,
+      before: old,
+    });
+  }
+}
+
+// --- Messen ----------------------------------------------------------------
+
+/*
+ * Jeder Fall wird nach jeder Wartezeit einmal gefragt. Gespeichert werden je
+ * Taste zwei Zahlen: "angeschlagen" um den Anschlag herum und "klingt" gleich
+ * danach. Die Rohwerte bleiben in `window.lab`, damit sich Regeln in der
+ * Konsole nachrechnen lassen, ohne das Modell noch einmal zu fragen.
+ */
+window.lab = [];
+for (const [label, list] of Object.entries(cases)) {
+  lines.push(`${label} (${list.length}) wird gerechnet…`);
+  show();
+  for (const c of list) {
+    const signal = await render(c.strikes, c.at + Math.max(...DELAYS) + 0.1);
+    for (const delay of DELAYS) {
+      const [out] = await infer([windowEnding(signal, c.at + delay)]);
+      const k = frameOf(c.at, c.at + delay);
+      const struck = [], held = [];
+      for (let midi = A0; midi < A0 + KEYS; midi++) {
+        struck.push(score(out, k, midi));
+        held.push(sounding(out, k, midi));
+      }
+      window.lab.push({ label, delay, played: c.played, before: c.before ?? [], struck, held });
+    }
+  }
+  lines.pop();
+}
+
+const value = (list, midi) => (midi >= A0 && midi < A0 + KEYS ? list[midi - A0] : 0);
+const same = (a, b) => a.length === b.length && a.every((m) => b.includes(m));
+const at = (label, delay) => window.lab.filter((r) => r.label === label && r.delay === delay);
+const ms = (delay) => `${String(delay * 1000).padStart(3)} ms`;
+
+// A: wie eine Transkription, ohne zu wissen, was kommen soll.
+lines.push("A. Nur „angeschlagen“, ohne Erwartung: genau die gespielten Tasten über der Schwelle");
+for (const label of Object.keys(cases)) {
+  for (const delay of DELAYS) {
+    const rows = at(label, delay);
+    const exact = THRESHOLDS.map((t) => {
+      const n = rows.filter((r) => same(r.played, r.struck.flatMap((v, i) => (v >= t ? [A0 + i] : [])))).length;
+      return `${n}/${rows.length}@${t}`;
+    });
+    let foreign = 0, stale = 0;
+    for (const r of rows) {
+      r.struck.forEach((v, i) => {
+        const m = A0 + i;
+        if (v < 0.5 || r.played.includes(m)) return;
+        if (r.before.includes(m)) stale++;
+        else foreign++;
+      });
+    }
+    lines.push(`  ${label.padEnd(40)} ${ms(delay)}:  ${exact.join("  ")}  fremd ${foreign}` +
+      (rows[0].before.length ? `  alter Klang ${stale}` : ""));
+  }
+}
+lines.push("");
+show();
+
+/*
+ * B: warum. Was das Modell zu einem Oberton sagt, der nicht gespielt wurde,
+ * neben dem, was es zu gespielten Tönen sagt. Liegen die Zahlen übereinander,
+ * kann keine Schwelle die beiden trennen.
+ */
+{
+  const delay = 0.12;
+  const quantiles = (values) => {
+    const s = [...values].sort((a, b) => a - b);
+    const q = (f) => s[Math.min(s.length - 1, Math.floor(f * s.length))].toFixed(2);
+    return `${q(0.1)}  ${q(0.5)}  ${q(0.9)}`;
+  };
+  const single = at("Einzelton, alle 88 Tasten", delay).filter((r) => r.played[0] >= 36 && r.played[0] <= 84);
+  const octave = at("Zwei Hände, Oktave und Doppeloktave", delay);
+  const two = at("Zwei Hände, je ein Ton", delay);
+  const groups = [
+    ["Einzelton gespielt, C2 bis C6", single.map((r) => [r, r.played[0]])],
+    ["  die Oktave darüber, nicht gespielt", single.map((r) => [r, r.played[0] + 12])],
+    ["  die Duodezime darüber, nicht gespielt", single.map((r) => [r, r.played[0] + 19])],
+    ["Oktave beider Hände, der obere Ton", octave.map((r) => [r, Math.max(...r.played)])],
+    ["Zwei Hände, der Ton rechts", two.map((r) => [r, r.played[1]])],
+    ["  links + Oktave, nicht gespielt", two.filter((r) => r.played[0] + 12 !== r.played[1]).map((r) => [r, r.played[0] + 12])],
+  ];
+  lines.push(`B. Obertöne gegen gespielte Töne, ${ms(delay).trim()} nach dem Anschlag (10 %, Median, 90 %)`);
+  lines.push(`  ${"".padEnd(40)}  angeschlagen        klingt`);
+  for (const [text, pairs] of groups) {
+    const struck = quantiles(pairs.map(([r, m]) => value(r.struck, m)));
+    const held = quantiles(pairs.map(([r, m]) => value(r.held, m)));
+    lines.push(`  ${text.padEnd(40)}  ${struck}    ${held}`);
+  }
+  lines.push("");
+  show();
+}
+
+/*
+ * C: was die App wirklich fragen würde. Jede erwartete Taste muss angeschlagen
+ * sein und klingen; keine andere darf klingen, außer was vorher schon klang.
+ * "Angeschlagen" sagt, dass ein Ton neu ist, "klingt", welcher es ist: beim
+ * Oberton einer Oktave liegt "angeschlagen" fast so hoch wie beim gespielten
+ * Ton, "klingt" deutlich darunter (siehe B). Die Schwellen sind die beste
+ * Wahl aus einem Raster von 0,3 bis 0,6; ganz ohne Lüge kam keine aus.
+ */
+const RULE = { struck: 0.5, sounding: 0.5 };
+function accepts(r, expected) {
+  for (const e of expected) {
+    if (value(r.struck, e) < RULE.struck || value(r.held, e) < RULE.sounding) return false;
+  }
+  for (let m = A0; m < A0 + KEYS; m++) {
+    if (expected.includes(m) || r.before.includes(m)) continue;
+    if (value(r.held, m) >= RULE.sounding) return false;
+  }
+  return true;
+}
+
+/**
+ * Was erwartet wäre, wenn sich eine Hand verlesen hätte. Keines davon darf die
+ * Prüfung annehmen, sonst lügt die App. Vier Arten: ein Ton um einen Halbton
+ * oder eine Oktave daneben; ein vergessener Ton, der ein Oberton eines
+ * gespielten ist, der schwerste Fall; ein anderer vergessener Ton; ein Ton zu
+ * viel.
+ */
+function misreadings(played) {
+  const out = { daneben: [], "vergessener Oberton": [], vergessen: [], "zu viel": [] };
+  const free = (m) => m >= A0 && m < A0 + KEYS && !played.includes(m);
+  played.forEach((m, i) => {
+    for (const d of [-12, -1, 1, 12]) if (free(m + d)) out.daneben.push(played.map((p, j) => (j === i ? p + d : p)));
+    for (const d of [12, 19, 24]) if (free(m + d)) out["vergessener Oberton"].push([...played, m + d]);
+    for (const d of [4, -5]) if (free(m + d)) out.vergessen.push([...played, m + d]);
+  });
+  if (played.length > 1) played.forEach((_, i) => out["zu viel"].push(played.filter((_, j) => j !== i)));
+  return out;
+}
+
+lines.push(`C. Mit Erwartung geprüft: angeschlagen ≥ ${RULE.struck}, klingt ≥ ${RULE.sounding}, sonst nichts Neues klingend`);
+for (const delay of DELAYS) {
+  let accepted = 0, total = 0;
+  const all = {};
+  for (const label of Object.keys(cases)) {
+    const rows = at(label, delay);
+    const ok = rows.filter((r) => accepts(r, r.played)).length;
+    accepted += ok;
+    total += rows.length;
+    const mine = {};
+    for (const r of rows) {
+      for (const [kind, list] of Object.entries(misreadings(r.played))) {
+        for (const expected of list) {
+          const lied = accepts(r, expected);
+          for (const tally of [mine, all]) {
+            tally[kind] ??= [0, 0];
+            tally[kind][1]++;
+            if (lied) tally[kind][0]++;
+          }
+        }
+      }
+    }
+    const text = Object.entries(mine).map(([k, [n, of]]) => `${k} ${n}/${of}`).join("  ");
+    lines.push(`  ${label.padEnd(40)} ${ms(delay)}:  angenommen ${ok}/${rows.length}   durchgewinkt: ${text}`);
+  }
+  const text = Object.entries(all).map(([k, [n, of]]) => `${k} ${n}/${of}`).join("  ");
+  lines.push(`  ${"zusammen".padEnd(40)} ${ms(delay)}:  angenommen ${accepted}/${total}   durchgewinkt: ${text}`);
+  lines.push("");
+  show();
+}
+lines.push("fertig");
+show();
+</script>
+</body>
+</html>

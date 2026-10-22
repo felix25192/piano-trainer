@@ -104,6 +104,16 @@ and as runs. **Measure changes to the microphone path here, not in
 strike, and the app never sees one. That difference once hid a loop that named
 3 notes of 30. <http://localhost:5173/onset-lab.html>, about a minute to run.
 
+`chord-lab.html` asked whether Spotify's Basic Pitch could hear both hands at
+once. It renders chords from the recordings the way `SampledPiano` plays them
+and asks the model once per strike, as the app would, then counts both what it
+accepts and what it would wave through had a hand misread. The model sits in
+`lab/basic-pitch/` (900 KB, Apache 2.0, never published), and TensorFlow.js 4
+is a dev dependency for it alone. **Give the model one window per call**:
+given several it accepts them and returns different numbers, which the bench
+checks on every run. The answer was no — see `docs/PLAN.md`, 22.10.2026.
+<http://localhost:5173/chord-lab.html>, about five minutes.
+
 **Deployment is automatic**: a push to `main` runs lint, tests, types and build,
 and publishes to <https://felix25192.github.io/piano-trainer/>.
 
@@ -269,6 +279,13 @@ aim at and still leaves the eyes the work of finding it on the page.
   "are the expected notes there and is nothing foreign among them". Weeks, and
   the adversaries are the pedal, the chord still ringing from before, and the
   partials of a low note landing exactly where a higher expected note sits.
+
+  The shortcut was measured and is not one. Basic Pitch, asked with the
+  expected notes in hand, accepts three quarters of correctly played strikes
+  (351 of 460 in `chord-lab.html`) and waves through one extra note in
+  seventeen. To it, the upper note of an octave and the lower note's overtone
+  are nearly the same signal — and to any model that does not know the
+  instrument, they are.
 - **The microphone has never heard a real piano.** Everything measured so far
   was a recording pushed through the detector, or a hummed note. The level,
   the room and the attack of an actual instrument are unmeasured. This is the
