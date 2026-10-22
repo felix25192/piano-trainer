@@ -1705,15 +1705,23 @@ Eingabe ist ein gerechneter Klang, C3 links, E4 und G4 rechts, keine
 dekodierte Aufnahme - jeder Browser dekodiert MP3 ein wenig anders, und der
 Vergleich soll nur die Rechnung pruefen.
 
-Schon am Laptop zeigt sie etwas, das vorher keiner gefragt hatte: WebAssembly
-ist dort der schnellste Weg (108 ms), blockiert die Seite aber genauso lange
-am Stueck. In der App muesste es in einen eigenen Thread, einen Web Worker.
-WebGPU blockiert 6 ms. Alle Wege stimmen mit der exakten Rechnung ueberein.
+Am Laptop, auf der veroeffentlichten Seite und mit sichtbarem Fenster: WebGPU
+27 ms je Anschlag, WebGL 107, WebAssembly 135. Alle drei stimmen mit der
+exakten Rechnung ueberein. Und etwas, das vorher keiner gefragt hatte:
+WebAssembly blockiert die Seite so lange, wie es rechnet, bis 142 ms am Stueck.
+In der App muesste es in einen eigenen Thread, einen Web Worker; WebGPU und
+WebGL blockieren 10 bis 12 ms.
+
+Im Hintergrund sieht das voellig anders aus - derselbe Laptop, das Fenster
+verdeckt: WebGPU 276 ms, WebGL 802, WebAssembly 108. Die Grafik wird dann
+gedrosselt, der Prozessor nicht. Auf dem iPad heisst das: Seite offen lassen,
+sonst misst sie die Drosselung.
 
 Nebenwirkung im Build: mit einer dritten Seite lagert Rolldown eine kleine
 gemeinsame Laufzeit aus, der Code der App heisst danach anders und ist 34
 Bytes groesser. Inhaltlich unveraendert, geprueft auf der veroeffentlichten
-Seite. TensorFlow.js steht jetzt unter den Abhaengigkeiten statt unter den
+Seite: der Service Worker holt nach dem Deploy den neuen Code, das Menuett
+oeffnet sich, keine Fehler. TensorFlow.js steht jetzt unter den Abhaengigkeiten statt unter den
 Entwicklungsabhaengigkeiten, weil eine veroeffentlichte Seite es braucht.
 
 Die Messung selbst steht als Teil D in `docs/TESTRUNDE.md` und braucht kein
