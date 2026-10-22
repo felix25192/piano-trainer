@@ -1390,3 +1390,69 @@ sie neu.
 Der Kopf dieser Datei und `CLAUDE.md` sagten auf `main` noch "nativ
 gestrichen". Der Vorversuch hatte das nur auf seinem eigenen Branch
 berichtigt, jetzt steht es auch hier richtig.
+
+### Was die anderen Apps machen, und was davon passt
+
+Verglichen mit Simply Piano, Yousician, Flowkey und Skoove, dazu Sight Reading
+Factory. Zuerst die Frage, wie sie "alle Toene perfekt" erkennen: gar nicht.
+Perfekt ist es nur ueber MIDI - Simply Piano schreibt selbst, mit dem Kabel
+komme man auf 100 %, wenn das Mikrofon Probleme macht, und alle vier bieten
+MIDI an. Wie ihre Mikrofonerkennung arbeitet, veroeffentlicht keiner. Flowkeys
+"Wait Mode" ist dasselbe Prinzip wie unseres: der erwartete Ton ist bekannt,
+gefragt wird nur, ob er kam.
+
+Uebernehmen, weil es das Lesen trainiert:
+
+- **Eine Schleife ueber Takte**, wie bei Flowkey und Skoove. Stand seit Phase 4
+  im Plan.
+- **Endlos neues, gestuftes Material**, wie Sight Reading Factory es bei jedem
+  Klick komponiert. Sieben Stuecke kennt man nach ein paar Wochen, und dann
+  liest das Gedaechtnis statt der Augen.
+- **Ein Tempo-Modus**, in dem ein Fehler nicht anhaelt. Blattspiel heisst
+  weiterspielen und vorauslesen; der Warte-Modus trainiert nur das Finden.
+  Beschlossen, als zweiter Modus neben dem bisherigen, ohne Punkte.
+- **Eine Fehlerdiagnose**: welche Noten oft verwechselt werden, nur auf dem
+  Geraet, als nuechterne Uebersicht und nicht als Verlauf zum Jagen.
+  Beschlossen.
+
+Nicht uebernehmen: Videos von Haenden, Begleitband, Pop-Bibliothek, Sterne
+und Streaks. Nichts davon trainiert Lesen.
+
+### Schwachstellen, die dabei auffielen
+
+1. `MidiInput.ts` ist seit dem 22.09. fertig und nirgends angeschlossen. Am
+   Rechner laesst sich die App mit dem Kawai nicht spielen.
+2. Das Mikrofon mit "beide Haende" bleibt beim zweiten Schritt stehen, und nur
+   der Text auf der Startkarte sagt warum.
+3. Der groesste Knopf im Uebungsbild ist "richtigen Ton spielen", laut CSS ein
+   Platzhalter. Das Mikrofon ist ein kleines Symbol ohne Beschriftung.
+4. Ein Fehler faerbt die Markierung nur von gruen nach rot - fuer eine
+   Rot-Gruen-Schwaeche, rund 8 % der Maenner, kein Signal.
+5. Der Rhythmus zaehlt nirgends.
+6. `App.tsx` hat 1702 Zeilen, ein Fuenftel des ganzen Codes, und keinen Test.
+
+### Beschlossen: das Mikrofon fuer beide Haende
+
+**Kein Geld, also keine native App.** Das Apple-Konto entfaellt vorerst.
+
+**Der Schwerpunkt ist die Erkennung beider Haende ueber das Mikrofon.** Am
+akustischen Klavier gibt es keinen anderen Weg, und das iPad braucht dann
+nichts als Safari. Perfekt schafft das keine der grossen Apps; das Ziel ist,
+dass die App nie luegt.
+
+**Erst Basic Pitch messen, dann selbst bauen.** Spotifys Modell erkennt
+mehrere Toene gleichzeitig, laeuft im Browser und steht unter Apache 2.0. Ob
+es auf dem iPad schnell genug ist und ob es die Klaenge zweier Haende
+auseinanderhaelt, ist nirgends belegt. Ein Pruefstand misst beides, bevor
+wochenlang Spektralvorlagen von Hand entstehen.
+
+**MIDI wird trotzdem angeschlossen, als Messlatte.** Am Laptop koennen Chrome
+und Edge Web MIDI, nur Safari nicht. Haengt das Kawai per Kabel am Laptop,
+sagt MIDI genau, was gespielt wurde, waehrend das Mikrofon mithoert - so wird
+die Erkennung am echten Instrument messbar statt nur an Aufnahmen. Ob ein
+Laptop ans Kawai kommt, ist noch offen.
+
+**Spaeter, in dieser Reihenfolge**: Tempo-Modus, Fehlerdiagnose, neues
+Lesematerial. Kostenlos zu probieren bleibt der "Web MIDI Browser" aus dem App
+Store, der Webseiten auf dem iPad MIDI gibt; er setzt nur voraus, dass
+`MidiInput` angeschlossen ist.
