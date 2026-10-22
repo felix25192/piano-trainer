@@ -1,6 +1,6 @@
 # Projektplan
 
-Stand: 24.09.2026
+Stand: 22.10.2026
 
 > **Wie diese Datei zu lesen ist:** Unten stehen die Abschnitte in der
 > Reihenfolge ihrer Entstehung, jeder datiert. Zum Einsteigen reicht dieser
@@ -44,9 +44,16 @@ werden nur noch einmal verlangt. Ein Service Worker haelt die App nach einem
 Deploy am Leben und die Aufnahmen offline. Als Naechstes, nach dem Test am
 Instrument: Akkorde ueber das Mikrofon (Stufe 2, Wochen).
 
-**Nativ ist gestrichen.** Es gibt keinen Mac, iOS-Builds brauchen aber macOS
-und Xcode. Damit wird es auf dem iPad nie MIDI geben, denn Safari kann kein
-Web MIDI. Das Mikrofon ist nicht der Umweg, sondern der Weg.
+**Am 22.10. wieder aufgenommen, und zuerst geht es ans Instrument**: eine
+Testrunde mit dem iPad am Kawai und am akustischen Klavier, die Checkliste
+steht in `docs/TESTRUNDE.md`. Erst danach wird ueber das Apple-Konto
+entschieden. Begruendet im Abschnitt vom 22.10.
+
+**Nativ geht doch, ohne Mac** - am 24.09. im Vorversuch gezeigt, auf dem
+Branch `ios-spike`: GitHub Actions baut die iOS-Huelle auf seinen
+macOS-Rechnern, mit einer eigenen MIDI-Bruecke. Fehlt noch das Signieren, und
+dafuer ein Apple-Developer-Konto (99 USD im Jahr). Das Mikrofon bleibt fuer
+das akustische Klavier der einzige Weg.
 
 **Noch nie getestet:** die App am echten Instrument. Bis das passiert ist,
 sind alle Aussagen ueber das Spielgefuehl Vermutungen.
@@ -1340,3 +1347,46 @@ Auf dem iPad und vom Home-Bildschirm ist er ungetestet. Und ein Geraet, das
 noch ein `index.html` von vor seiner Zeit haelt, kann beim ersten Start nach
 diesem Deploy ein letztes Mal schwarz bleiben - einmal nach unten ziehen, dann
 ist es vorbei.
+
+## Wieder aufgenommen: zuerst ans Instrument (22.10.2026)
+
+Nach vier Wochen Pause. Die App laeuft unveraendert, veroeffentlicht wie
+lokal, 259 Tests gruen. Der Vorversuch zur iOS-Huelle vom 24.09. steht auf dem
+Branch `ios-spike` und ist nicht auf `main`.
+
+### Beschlossen
+
+**Zuerst eine Testrunde am Klavier, mit dem iPad.** Die Checkliste steht in
+`docs/TESTRUNDE.md`. Jede Zahl zum Mikrofon stammt bisher vom Pruefstand, aus
+Aufnahmen; ein echtes Instrument hat es nie gehoert. Davon haengen beide
+grossen naechsten Schritte ab, die Akkorde ebenso wie die native App. Offen
+sind ausserdem die drei Audio-Punkte, die nur das iPad pruefen kann, der
+Service Worker auf dem Geraet und das Mikrofon vom Home-Bildschirm. Das alles
+geht in eine Runde statt in sechs einzelne Rueckmeldungen.
+
+**Beide Instrumente zaehlen gleich.** Felix uebt etwa gleich viel am Kawai und
+am akustischen Klavier. Auf Dauer braucht es deshalb beides: MIDI fuer das
+Kawai, weil es exakt ist und beide Haende und das Pedal kennt, und das
+Mikrofon fuer das akustische Klavier, weil es dort keinen anderen Weg gibt.
+Die Testrunde laeuft an beiden, mit denselben Durchgaengen, damit sich die
+Zahlen vergleichen lassen.
+
+**Das Apple-Developer-Konto erst nach der Testrunde.** Bevor Geld ausgegeben
+wird, soll feststehen, wie weit das Mikrofon in Safari traegt. Das ist
+zugleich der Vergleichsstand fuer die Huelle: dort verhaelt sich Audio anders,
+und die sechs Punkte gelten neu.
+
+**Akkorde ueber das Mikrofon danach**, je nachdem, was die Runde zeigt.
+
+### Aufgeraeumt
+
+Auf `main` lag noch ein Ordner `ios/`, von Git nicht verfolgt: Dateien, die
+Capacitor beim Abgleich hineinkopiert und die auf dem Branch eine eigene
+`.gitignore` ausschliesst. Beim Wechsel zurueck auf `main` ging die
+`.gitignore` mit, die Kopien blieben liegen, und `npx oxlint` meldete
+Warnungen aus gebautem Code. Geloescht; `npx cap sync` auf dem Branch erzeugt
+sie neu.
+
+Der Kopf dieser Datei und `CLAUDE.md` sagten auf `main` noch "nativ
+gestrichen". Der Vorversuch hatte das nur auf seinem eigenen Branch
+berichtigt, jetzt steht es auch hier richtig.

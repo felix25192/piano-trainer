@@ -53,9 +53,8 @@ src/Home.tsx    The start screen. Reports which mode was tapped; knows
   struck note out. The bench, the tests and the app all run this one
 - `core/NoteOutput.ts` — **the port** every sound output implements
 - `adapters/osmdScore.ts` — the only file allowed to know OSMD's object graph
-- `adapters/MidiInput.ts` — Web MIDI (desktop only; Safari has none, and
-  there is no Mac to build a native wrapper with, so it will never reach the
-  iPad)
+- `adapters/MidiInput.ts` — Web MIDI (desktop only; Safari has none, so on
+  the iPad MIDI needs the native shell on the `ios-spike` branch)
 - `adapters/MicInput.ts` — the microphone: strike, then pitch. Monophonic
 - `adapters/audioSession.ts` — **the only file that touches the device's
   audio**: the context, the session category, the microphone
@@ -272,7 +271,10 @@ aim at and still leaves the eyes the work of finding it on the page.
   partials of a low note landing exactly where a higher expected note sits.
 - **The microphone has never heard a real piano.** Everything measured so far
   was a recording pushed through the detector, or a hummed note. The level,
-  the room and the attack of an actual instrument are unmeasured.
+  the room and the attack of an actual instrument are unmeasured. This is the
+  next step, decided on 22.10.2026: one round at both instruments, written
+  out in `docs/TESTRUNDE.md`, together with the audio checks only the iPad
+  can do.
 
   The detector is measured against recordings. Against the thirty recordings it gets
   **28 of 30 right in the first 50 ms after the strike** — over a window that
@@ -345,7 +347,12 @@ aim at and still leaves the eyes the work of finding it on the page.
   `public/scores/SOURCES.md`.
 
 Safari implements no Web MIDI on any platform, so a MIDI keyboard can only
-reach the iPad through a native wrapper (Capacitor) later.
+reach the iPad through a native wrapper. On the `ios-spike` branch that
+wrapper exists: Capacitor 8, built unsigned by GitHub Actions on macOS since
+there is no Mac here, with its own CoreMIDI bridge in `native/midi-bridge`.
+It compiles; it has never run. Signing needs an Apple Developer account,
+and that decision waits for the test round at the instrument
+(`docs/TESTRUNDE.md`).
 
 ## History
 
