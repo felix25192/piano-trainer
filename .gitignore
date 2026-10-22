@@ -41,6 +41,9 @@ desktop.ini
 coverage/
 .nyc_output/
 
+# Models measured on the bench that may not be published (see chord-lab.html)
+lab/local/
+
 # Capacitor (later phases)
 ios/App/Pods/
 android/.gradle/

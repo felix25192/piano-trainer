@@ -18,39 +18,44 @@
 
 <h1>Prüfstand: Akkorde</h1>
 <p class="lead">
-  Misst, ob Spotifys Basic Pitch kann, was der einstimmige Detektor nicht kann:
-  zwei Hände zugleich hören. Die Klänge entstehen aus den dreißig Aufnahmen aus
+  Misst, ob ein Modell kann, was der einstimmige Detektor nicht kann: zwei Hände
+  zugleich hören. Die Klänge entstehen aus den dreißig Aufnahmen aus
   <code>public/piano/</code>, so wie <code>adapters/SampledPiano.ts</code> sie
   spielt — die nächste Aufnahme, um höchstens einen Halbton verschoben. Gefragt
-  wird das Modell, wie die App es fragen würde: einmal je Anschlag, über die
-  letzten zwei Sekunden, die eine bestimmte Zeit nach dem Anschlag enden. Ein
-  paar Minuten. Nur für die Entwicklung, wird nicht veröffentlicht.
+  wird das Modell, wie die App es fragen würde: einmal je Anschlag, über ein
+  Fenster, das eine bestimmte Zeit nach dem Anschlag endet. Welches Modell,
+  sagt <code>?model=</code>: <code>basic-pitch</code> ohne Angabe, oder
+  <code>onsets-velocities</code>, das unter der GPL steht und deshalb nur
+  lokal in <code>lab/local/</code> liegt, nicht im Repository. Ein paar Minuten.
+  Nur für die Entwicklung, wird nicht veröffentlicht.
 </p>
 
 <pre id="summary">lädt…</pre>
 
 <script type="module">
-import * as tf from "@tensorflow/tfjs-core";
-import "@tensorflow/tfjs-backend-webgl";
-import "@tensorflow/tfjs-backend-cpu";
-import { loadGraphModel } from "@tensorflow/tfjs-converter";
+const MODELS = {
+  "basic-pitch": "/lab/basic-pitch/model.js",
+  "onsets-velocities": "/lab/local/onsets-velocities/model.js",
+};
+const params = new URLSearchParams(location.search);
+const chosen = params.get("model") ?? "basic-pitch";
+const model = await import(/* @vite-ignore */ MODELS[chosen]);
+const RATE = model.RATE;
 
-// Fest im Modell: 22050 Hz, ein Fenster von zwei Sekunden minus einem Hop,
-// heraus kommen 172 Bilder zu je 256 Samples und je Bild 88 Tasten ab A0.
-const RATE = 22050;
-const WINDOW = 43844;
-const HOP = 256;
-const FRAMES = 172;
 const KEYS = 88;
 const A0 = 21;
 
-/** Wie lange nach dem Anschlag das Fenster endet, also wie lange die App wartet. */
-const DELAYS = [0.08, 0.12, 0.25];
+/**
+ * Wie lange nach dem Anschlag das Fenster endet, also wie lange die App wartet.
+ * Andere Werte mit `?delays=0.25,0.4`.
+ */
+const DELAYS = params.get("delays")?.split(",").map(Number) ?? [0.08, 0.12, 0.25];
 /** Ab hier gilt eine Taste als angeschlagen; dazu ein strengerer und ein lockerer Wert. */
 const THRESHOLDS = [0.3, 0.5, 0.7];
 
-const lines = [];
+const lines = [`Modell: ${model.name}`, "Modell und Aufnahmen werden geladen…"];
 const show = () => (document.getElementById("summary").textContent = lines.join("\n"));
+show();
 
 // Dieselben Dateien und dieselbe Zuordnung wie in adapters/SampledPiano.ts.
 const SAMPLES = [
@@ -60,12 +65,7 @@ const SAMPLES = [
 ];
 const sampleFor = (midi) => Math.min(Math.max(Math.round((midi - A0) / 3), 0), SAMPLES.length - 1);
 
-lines.push("Modell und Aufnahmen werden geladen…");
-show();
-
-const model = await loadGraphModel("/lab/basic-pitch/model.json");
-
-/** Eine Aufnahme als Mono bei 22050 Hz, vorne bis zum Anschlag gekürzt, hinten nach 4 s. */
+/** Eine Aufnahme als Mono bei RATE, vorne bis zum Anschlag gekürzt, hinten nach 4 s. */
 const decoder = new OfflineAudioContext(1, 1, RATE);
 async function load(file) {
   const raw = await fetch(`/piano/${file}.mp3`).then((r) => r.arrayBuffer());
@@ -113,165 +113,18 @@ async function render(strikes, seconds) {
   return out;
 }
 
-/** Die WINDOW Samples, die zur Zeit `end` enden; vor dem Anfang Stille. */
-function windowEnding(signal, end) {
-  const w = new Float32Array(WINDOW);
-  const last = Math.round(end * RATE);
-  for (let i = 0; i < WINDOW; i++) {
-    const j = last - WINDOW + i;
-    if (j >= 0 && j < signal.length) w[i] = signal[j];
-  }
-  return w;
-}
-
-/**
- * Ein Fenster nach dem anderen; je Fenster die Anschlagswerte, 172 × 88. Die
- * Werte für "klingt" hängen als `.frames` daran, für den Vergleich.
- *
- * Nie mehrere Fenster in einem Aufruf, obwohl das Modell eine Stapelgröße
- * annimmt: mit mehreren lieferte "klingt" nur noch 0,09 und 0,10 im Wechsel,
- * mit einem stimmte es. Spotifys eigener Code ruft es ebenfalls nur mit einem
- * Fenster auf. Die Kontrolle beim Einmessen unten vergleicht beides.
- */
-async function inferOne(w) {
-  const input = tf.tensor3d(w, [1, WINDOW, 1]);
-  const [onsets, frames] = model.execute(input, ["Identity_2", "Identity_1"]);
-  const [on, fr] = await Promise.all([onsets.data(), frames.data()]);
-  tf.dispose([input, onsets, frames]);
-  on.frames = fr;
-  return on;
-}
-async function infer(windows) {
-  const outs = [];
-  for (const w of windows) outs.push(await inferOne(w));
-  return outs;
-}
-/** Dasselbe gestapelt, nur für die Kontrolle. */
-async function inferStacked(windows) {
-  const flat = new Float32Array(windows.length * WINDOW);
-  windows.forEach((w, b) => flat.set(w, b * WINDOW));
-  const input = tf.tensor3d(flat, [windows.length, WINDOW, 1]);
-  const [onsets, frames] = model.execute(input, ["Identity_2", "Identity_1"]);
-  const [on, fr] = await Promise.all([onsets.data(), frames.data()]);
-  tf.dispose([input, onsets, frames]);
-  return windows.map((_, b) => {
-    const out = on.subarray(b * FRAMES * KEYS, (b + 1) * FRAMES * KEYS);
-    out.frames = fr.subarray(b * FRAMES * KEYS, (b + 1) * FRAMES * KEYS);
-    return out;
-  });
-}
-
-/** Wie sicher das Modell ist, dass `midi` kurz nach Bild k klingt: das Höchste über die nächsten 4 Bilder. */
-function sounding(out, k, midi) {
-  let best = 0;
-  for (let j = k + 1; j <= k + 4; j++) {
-    if (j >= 0 && j < FRAMES) best = Math.max(best, out.frames[j * KEYS + midi - A0]);
-  }
-  return best;
-}
-
-/** Das Bild, in dem ein Anschlag zur Zeit `at` liegt, wenn das Fenster bei `end` endet. */
-let offset = 0;
-const frameOf = (at, end) => Math.round((at - (end - WINDOW / RATE)) * (RATE / HOP)) + offset;
-
-/** Wie sicher das Modell ist, dass `midi` um Bild k herum angeschlagen wurde: das Höchste über ±2 Bilder. */
-function score(onsets, k, midi) {
-  let best = 0;
-  for (let j = k - 2; j <= k + 2; j++) {
-    if (j >= 0 && j < FRAMES) best = Math.max(best, onsets[j * KEYS + midi - A0]);
-  }
-  return best;
-}
-
 // Für die Konsole: jeder Schritt einzeln aufrufbar.
-window.bench = { render, windowEnding, infer, frameOf: (at, end) => frameOf(at, end), score, sounding };
+window.bench = { render, model };
+
+lines.length = 1;
+lines.push(...(await model.prepare(render)), "");
+show();
 
 /** Zufall mit festem Startwert, damit jeder Lauf dieselben Fälle prüft. */
 function random(seed) {
   return () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 }
 const pick = (rnd, lo, hi) => lo + Math.floor(rnd() * (hi - lo + 1));
-
-// --- Rechenzeit ---------------------------------------------------------
-
-function renderer() {
-  const gl = document.createElement("canvas").getContext("webgl2");
-  const info = gl?.getExtension("WEBGL_debug_renderer_info");
-  return info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : "unbekannt";
-}
-
-/** Ein Fenster, gemessen von der Eingabe bis die Zahlen im Speicher sind. */
-async function timing(backend, runs) {
-  await tf.setBackend(backend);
-  await tf.ready();
-  const input = tf.randomUniform([1, WINDOW, 1], -0.1, 0.1);
-  const once = async () => {
-    const t0 = performance.now();
-    const out = model.execute(input, "Identity_2");
-    await out.data();
-    out.dispose();
-    return performance.now() - t0;
-  };
-  for (let i = 0; i < 3; i++) await once();
-  const times = [];
-  for (let i = 0; i < runs; i++) times.push(await once());
-  input.dispose();
-  times.sort((a, b) => a - b);
-  return times[Math.floor(times.length / 2)];
-}
-
-lines.length = 0;
-lines.push(`WebGL: ${renderer()}`);
-lines.push(`Rechenzeit je Anschlag (ein Fenster, Median), webgl: ${(await timing("webgl", 15)).toFixed(0)} ms` +
-  `, float32: ${tf.env().getBool("WEBGL_RENDER_FLOAT32_ENABLED")}`);
-show();
-lines.push(`Rechenzeit je Anschlag (ein Fenster, Median), cpu:   ${(await timing("cpu", 5)).toFixed(0)} ms`);
-lines.push("");
-show();
-await tf.setBackend("webgl");
-await tf.ready();
-
-// --- Wo im Fenster ein Anschlag landet ---------------------------------
-
-/*
- * Vorher wissen, in welchem Bild das Modell einen Anschlag meldet, sonst
- * misst alles Weitere am falschen Bild. Gemessen mit viel Zeit nach dem
- * Anschlag, also da, wo das Modell am sichersten ist.
- */
-{
-  const probe = [36, 48, 55, 60, 64, 67, 72, 79, 84];
-  const windows = [];
-  for (const midi of probe) {
-    const signal = await render([{ midi, at: 1 }], 2.1);
-    windows.push(windowEnding(signal, 2.0));
-  }
-  const outs = await infer(windows);
-  const shifts = outs.map((onsets, i) => {
-    const k = frameOf(1, 2.0);
-    let best = k, top = -1;
-    for (let j = k - 10; j <= k + 10; j++) {
-      const v = onsets[j * KEYS + probe[i] - A0];
-      if (v > top) { top = v; best = j; }
-    }
-    return best - k;
-  });
-  offset = Math.round(shifts.reduce((a, b) => a + b, 0) / shifts.length);
-  lines.push(`Anschlag liegt ${offset} Bilder neben der Rechnung (je Ton: ${shifts.join(" ")}); so korrigiert.`);
-  const held = outs.map((o, i) => sounding(o, frameOf(1, 2.0), probe[i]).toFixed(2));
-  lines.push(`Kontrolle "klingt" beim gespielten Ton, sollte deutlich über 0,5 liegen: ${held.join(" ")}`);
-  // Gestapelt gegen einzeln: wie weit weichen die Werte voneinander ab?
-  const stacked = await inferStacked(windows);
-  let onDiff = 0, frDiff = 0;
-  stacked.forEach((s, i) => {
-    for (let j = 0; j < FRAMES * KEYS; j++) {
-      onDiff = Math.max(onDiff, Math.abs(s[j] - outs[i][j]));
-      frDiff = Math.max(frDiff, Math.abs(s.frames[j] - outs[i].frames[j]));
-    }
-  });
-  lines.push(`Kontrolle gestapelt gegen einzeln, größte Abweichung: angeschlagen ${onDiff.toFixed(3)}, klingt ${frDiff.toFixed(3)}`);
-  lines.push("");
-  show();
-}
 
 // --- Die Fälle -----------------------------------------------------------
 
@@ -346,10 +199,11 @@ for (const [label, pedal, gap] of [
 // --- Messen ----------------------------------------------------------------
 
 /*
- * Jeder Fall wird nach jeder Wartezeit einmal gefragt. Gespeichert werden je
- * Taste zwei Zahlen: "angeschlagen" um den Anschlag herum und "klingt" gleich
- * danach. Die Rohwerte bleiben in `window.lab`, damit sich Regeln in der
- * Konsole nachrechnen lassen, ohne das Modell noch einmal zu fragen.
+ * Jeder Fall wird nach jeder Wartezeit einmal gefragt. Je Taste kommen zwei
+ * Zahlen zurück: "angeschlagen" um den Anschlag herum, und "klingt" gleich
+ * danach, falls das Modell das kennt. Die Rohwerte bleiben in `window.lab`,
+ * damit sich Regeln in der Konsole nachrechnen lassen, ohne das Modell noch
+ * einmal zu fragen.
  */
 window.lab = [];
 for (const [label, list] of Object.entries(cases)) {
@@ -358,19 +212,14 @@ for (const [label, list] of Object.entries(cases)) {
   for (const c of list) {
     const signal = await render(c.strikes, c.at + Math.max(...DELAYS) + 0.1);
     for (const delay of DELAYS) {
-      const [out] = await infer([windowEnding(signal, c.at + delay)]);
-      const k = frameOf(c.at, c.at + delay);
-      const struck = [], held = [];
-      for (let midi = A0; midi < A0 + KEYS; midi++) {
-        struck.push(score(out, k, midi));
-        held.push(sounding(out, k, midi));
-      }
+      const { struck, held } = await model.ask(signal, c.at, delay);
       window.lab.push({ label, delay, played: c.played, before: c.before ?? [], struck, held });
     }
   }
   lines.pop();
 }
 
+const hasHeld = window.lab[0].held !== undefined;
 const value = (list, midi) => (midi >= A0 && midi < A0 + KEYS ? list[midi - A0] : 0);
 const same = (a, b) => a.length === b.length && a.every((m) => b.includes(m));
 const at = (label, delay) => window.lab.filter((r) => r.label === label && r.delay === delay);
@@ -406,8 +255,7 @@ show();
  * neben dem, was es zu gespielten Tönen sagt. Liegen die Zahlen übereinander,
  * kann keine Schwelle die beiden trennen.
  */
-{
-  const delay = 0.12;
+for (const delay of DELAYS) {
   const quantiles = (values) => {
     const s = [...values].sort((a, b) => a - b);
     const q = (f) => s[Math.min(s.length - 1, Math.floor(f * s.length))].toFixed(2);
@@ -425,70 +273,90 @@ show();
     ["  links + Oktave, nicht gespielt", two.filter((r) => r.played[0] + 12 !== r.played[1]).map((r) => [r, r.played[0] + 12])],
   ];
   lines.push(`B. Obertöne gegen gespielte Töne, ${ms(delay).trim()} nach dem Anschlag (10 %, Median, 90 %)`);
-  lines.push(`  ${"".padEnd(40)}  angeschlagen        klingt`);
+  lines.push(`  ${"".padEnd(40)}  angeschlagen${hasHeld ? "        klingt" : ""}`);
   for (const [text, pairs] of groups) {
     const struck = quantiles(pairs.map(([r, m]) => value(r.struck, m)));
-    const held = quantiles(pairs.map(([r, m]) => value(r.held, m)));
-    lines.push(`  ${text.padEnd(40)}  ${struck}    ${held}`);
+    const held = hasHeld ? `    ${quantiles(pairs.map(([r, m]) => value(r.held, m)))}` : "";
+    lines.push(`  ${text.padEnd(40)}  ${struck}${held}`);
   }
   lines.push("");
   show();
 }
 
+
 /*
- * C: was die App wirklich fragen würde. Jede erwartete Taste muss angeschlagen
- * sein und klingen; keine andere darf klingen, außer was vorher schon klang.
- * "Angeschlagen" sagt, dass ein Ton neu ist, "klingt", welcher es ist: beim
- * Oberton einer Oktave liegt "angeschlagen" fast so hoch wie beim gespielten
- * Ton, "klingt" deutlich darunter (siehe B). Die Schwellen sind die beste
- * Wahl aus einem Raster von 0,3 bis 0,6; ganz ohne Lüge kam keine aus.
+ * C und D: was die App wirklich fragen würde. Jede erwartete Taste muss
+ * angeschlagen sein; keine andere darf es sein, außer was vorher schon klang.
+ * Kennt das Modell "klingt", muss die erwartete Taste auch klingen, und die
+ * Frage nach Fremdem geht an "klingt": beim Oberton einer Oktave liegt
+ * "angeschlagen" fast so hoch wie beim gespielten Ton, "klingt" darunter.
+ *
+ * D lässt dazu als fremd nicht gelten, was Oktave, Duodezime oder Doppeloktave
+ * über einer erwarteten Taste liegt. Das ist ehrlich nur, wenn man dazusagt,
+ * was es kostet: ob ein solcher Ton fehlt oder zu viel ist, kann D nicht mehr
+ * sagen. Die beiden Arten stehen deshalb getrennt als "nicht prüfbar".
  */
-const RULE = { struck: 0.5, sounding: 0.5 };
-function accepts(r, expected) {
+const PARTIALS = [12, 19, 24];
+const isPartial = (m, of) => of.some((e) => e !== m && PARTIALS.includes(m - e));
+
+function accepts(r, expected, rule, tolerant) {
+  const foreignOf = hasHeld ? r.held : r.struck;
+  const foreignAt = hasHeld ? rule.sounding : rule.struck;
   for (const e of expected) {
-    if (value(r.struck, e) < RULE.struck || value(r.held, e) < RULE.sounding) return false;
+    if (value(r.struck, e) < rule.struck) return false;
+    if (hasHeld && value(r.held, e) < rule.sounding) return false;
   }
   for (let m = A0; m < A0 + KEYS; m++) {
     if (expected.includes(m) || r.before.includes(m)) continue;
-    if (value(r.held, m) >= RULE.sounding) return false;
+    if (tolerant && isPartial(m, expected)) continue;
+    if (value(foreignOf, m) >= foreignAt) return false;
   }
   return true;
 }
 
 /**
  * Was erwartet wäre, wenn sich eine Hand verlesen hätte. Keines davon darf die
- * Prüfung annehmen, sonst lügt die App. Vier Arten: ein Ton um einen Halbton
- * oder eine Oktave daneben; ein vergessener Ton, der ein Oberton eines
- * gespielten ist, der schwerste Fall; ein anderer vergessener Ton; ein Ton zu
- * viel.
+ * Prüfung annehmen, sonst lügt die App: ein Ton um einen Halbton oder eine
+ * Oktave daneben; ein vergessener Ton, der Oberton eines gespielten ist, oder
+ * ein anderer; ein Ton zu viel, der Oberton eines anderen ist, oder ein anderer.
  */
+const UNCHECKABLE = ["vergessener Oberton", "Oberton zu viel"];
 function misreadings(played) {
-  const out = { daneben: [], "vergessener Oberton": [], vergessen: [], "zu viel": [] };
+  const out = {
+    "Halbton daneben": [], "Oktave daneben": [], "vergessener Oberton": [], vergessen: [],
+    "Oberton zu viel": [], "zu viel": [],
+  };
   const free = (m) => m >= A0 && m < A0 + KEYS && !played.includes(m);
   played.forEach((m, i) => {
-    for (const d of [-12, -1, 1, 12]) if (free(m + d)) out.daneben.push(played.map((p, j) => (j === i ? p + d : p)));
-    for (const d of [12, 19, 24]) if (free(m + d)) out["vergessener Oberton"].push([...played, m + d]);
+    const shifted = (d) => played.map((p, j) => (j === i ? p + d : p));
+    for (const d of [-1, 1]) if (free(m + d)) out["Halbton daneben"].push(shifted(d));
+    for (const d of [-12, 12]) if (free(m + d)) out["Oktave daneben"].push(shifted(d));
+    for (const d of PARTIALS) if (free(m + d)) out["vergessener Oberton"].push([...played, m + d]);
     for (const d of [4, -5]) if (free(m + d)) out.vergessen.push([...played, m + d]);
   });
-  if (played.length > 1) played.forEach((_, i) => out["zu viel"].push(played.filter((_, j) => j !== i)));
+  if (played.length > 1) {
+    played.forEach((m, i) => {
+      const rest = played.filter((_, j) => j !== i);
+      out[isPartial(m, rest) ? "Oberton zu viel" : "zu viel"].push(rest);
+    });
+  }
   return out;
 }
 
-lines.push(`C. Mit Erwartung geprüft: angeschlagen ≥ ${RULE.struck}, klingt ≥ ${RULE.sounding}, sonst nichts Neues klingend`);
-for (const delay of DELAYS) {
-  let accepted = 0, total = 0;
-  const all = {};
+/** Je Kategorie und zusammen: wie viel angenommen, wie viel durchgewinkt. */
+function judge(delay, rule, tolerant) {
+  const per = {};
+  const all = { ok: 0, n: 0, lies: {} };
   for (const label of Object.keys(cases)) {
     const rows = at(label, delay);
-    const ok = rows.filter((r) => accepts(r, r.played)).length;
-    accepted += ok;
-    total += rows.length;
-    const mine = {};
+    const mine = { ok: rows.filter((r) => accepts(r, r.played, rule, tolerant)).length, n: rows.length, lies: {} };
+    all.ok += mine.ok;
+    all.n += mine.n;
     for (const r of rows) {
       for (const [kind, list] of Object.entries(misreadings(r.played))) {
         for (const expected of list) {
-          const lied = accepts(r, expected);
-          for (const tally of [mine, all]) {
+          const lied = accepts(r, expected, rule, tolerant);
+          for (const tally of [mine.lies, all.lies]) {
             tally[kind] ??= [0, 0];
             tally[kind][1]++;
             if (lied) tally[kind][0]++;
@@ -496,13 +364,51 @@ for (const delay of DELAYS) {
         }
       }
     }
-    const text = Object.entries(mine).map(([k, [n, of]]) => `${k} ${n}/${of}`).join("  ");
-    lines.push(`  ${label.padEnd(40)} ${ms(delay)}:  angenommen ${ok}/${rows.length}   durchgewinkt: ${text}`);
+    per[label] = mine;
   }
-  const text = Object.entries(all).map(([k, [n, of]]) => `${k} ${n}/${of}`).join("  ");
-  lines.push(`  ${"zusammen".padEnd(40)} ${ms(delay)}:  angenommen ${accepted}/${total}   durchgewinkt: ${text}`);
-  lines.push("");
-  show();
+  // Was D nicht prüfen kann, zählt bei D nicht als Lüge, sondern steht daneben.
+  const lies = Object.entries(all.lies)
+    .filter(([kind]) => !(tolerant && UNCHECKABLE.includes(kind)))
+    .reduce((s, [, [n]]) => s + n, 0);
+  return { per, all, lies };
+}
+const liesText = (lies, tolerant) => {
+  const shown = Object.entries(lies).filter(([kind]) => !(tolerant && UNCHECKABLE.includes(kind)));
+  const hidden = Object.entries(lies).filter(([kind]) => tolerant && UNCHECKABLE.includes(kind));
+  return shown.map(([k, [n, of]]) => `${k} ${n}/${of}`).join("  ") +
+    (hidden.length ? `   nicht prüfbar: ${hidden.map(([k, [n, of]]) => `${k} ${n}/${of}`).join("  ")}` : "");
+};
+const ruleText = (rule) => `angeschlagen ≥ ${rule.struck}` + (hasHeld ? `, klingt ≥ ${rule.sounding}` : "");
+
+/*
+ * Die Schwellen aus einem Raster, für jedes Modell dasselbe Vorgehen: gewählt
+ * wird, was am meisten annimmt, wobei jede Lüge zwanzig Annahmen kostet. Die
+ * Wahl fällt auf denselben Fällen, auf denen sie gemessen wird; das schmeichelt
+ * jedem Modell gleich.
+ */
+const RULES = hasHeld
+  ? [0.3, 0.4, 0.5, 0.6].map((sounding) => ({ struck: 0.5, sounding }))
+  : [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].map((struck) => ({ struck }));
+
+for (const [title, tolerant] of [
+  ["C. Mit Erwartung geprüft, streng: jede erwartete Taste da, sonst nichts Neues", false],
+  ["D. Mit Erwartung geprüft, Obertöne erwarteter Tasten gelten nicht als fremd", true],
+]) {
+  lines.push(title);
+  for (const delay of DELAYS) {
+    const tried = RULES.map((rule) => ({ rule, ...judge(delay, rule, tolerant) }));
+    for (const t of tried) {
+      lines.push(`  Raster ${ms(delay)}, ${ruleText(t.rule).padEnd(36)} angenommen ${t.all.ok}/${t.all.n}   durchgewinkt ${t.lies}`);
+    }
+    const best = tried.reduce((a, b) => (b.all.ok - 20 * b.lies > a.all.ok - 20 * a.lies ? b : a));
+    lines.push(`  gewählt: ${ruleText(best.rule)}`);
+    for (const [label, r] of Object.entries(best.per)) {
+      lines.push(`  ${label.padEnd(40)} ${ms(delay)}:  angenommen ${r.ok}/${r.n}   durchgewinkt: ${liesText(r.lies, tolerant)}`);
+    }
+    lines.push(`  ${"zusammen".padEnd(40)} ${ms(delay)}:  angenommen ${best.all.ok}/${best.all.n}   durchgewinkt: ${liesText(best.all.lies, tolerant)}`);
+    lines.push("");
+    show();
+  }
 }
 lines.push("fertig");
 show();

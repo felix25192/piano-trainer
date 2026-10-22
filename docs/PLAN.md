@@ -1540,6 +1540,11 @@ beim Dreiklang mit Bass mehr als die Haelfte, und etwa jeder siebzehnte
 zusaetzliche Ton ginge durch. Der einstimmige Weg schafft auf seinem
 Pruefstand 26 von 26 im Legato, ohne Luege.
 
+*Am selben Tag eingeschraenkt*, siehe den naechsten Abschnitt: das gilt fuer
+die strenge Pruefung. Laesst man Obertoene erwarteter Tasten nicht als fremd
+gelten und sagt dazu, was dann nicht mehr pruefbar ist, nimmt Basic Pitch 410
+von 460 an.
+
 Die Ursache liegt nicht am Modell allein. Ein Oberton und ein gespielter Ton
 sind physikalisch fast dasselbe Signal, und auch ein Spitzenmodell nur fuer
 Klavier (Kong u. a., 2020) nennt Oktavfehler als haeufigste Fehlerquelle. Ein
@@ -1564,3 +1569,114 @@ Drei Wege, noch nicht entschieden:
   mitbringt. Am Kawai sagt MIDI beim Einmessen, welche Taste klang.
 - **Eine Mischung**: Basic Pitch schlaegt vor, die eigene Pruefung entscheidet
   dort, wo ein erwarteter Ton auf dem Oberton eines anderen liegt.
+
+## Onsets and Velocities, und eine ehrlichere Pruefung (22.10.2026)
+
+Der zweite Kandidat: "Onsets and Velocities" (Fernandez 2023), ein Modell nur
+fuer Klavier, trainiert auf MAESTRO, laut Paper echtzeitfaehig.
+
+### Erst die Lizenz
+
+Code und Gewichte stehen unter der **GPL-3.0**; fuer die Gewichte gibt es
+keine eigene Lizenz, sie liegen im selben Repository. In vorsichtiger Lesart
+heisst das: lokal messen ist frei. Im oeffentlichen Repository waere es
+Weitergabe, diese Dateien und der Pruefstand, der sie laedt, stuenden dann
+unter der GPL. In der veroeffentlichten App muesste die ganze App unter die
+GPL - das "All rights reserved" der README waere hinfaellig.
+
+Beschlossen: **lokal messen, nichts davon ins Repository.** Ob die App unter
+die GPL ginge, falls das Modell traegt, wird spaeter entschieden.
+
+### Der Weg in den Browser
+
+In einer eigenen Python-Umgebung das Original geladen, Spektrogramm und Netz
+zusammen als eine ONNX-Datei exportiert - das Spektrum als Faltung mit einer
+festen DFT-Basis, weil ONNX die STFT von torchaudio so nicht kennt - und gegen
+das Original geprueft: das Log-Mel-Spektrogramm weicht um hoechstens 0,0007 dB
+ab, die Anschlagswahrscheinlichkeiten um 0,000005, die ONNX-Datei von PyTorch
+um 0,00003. Im Browser rechnet onnxruntime-web. Alles liegt in `lab/local/`,
+das Git ignoriert.
+
+Dafuer laedt `chord-lab.html` sein Modell jetzt austauschbar, `?model=` waehlt
+es; Basic Pitch steckt in `lab/basic-pitch/model.js`. Gegengeprueft: der
+umgebaute Pruefstand rechnet fuer Basic Pitch dieselben 351 von 460 wie vorher.
+
+Nebenbei erklaert, warum das gestapelte Rechnen bei Basic Pitch falsch war: die
+Konsole meldet `Texture total allocation size is too large`. Mehrere Fenster
+sprengen die Texturgrenze der Grafik, und TensorFlow.js rechnet still mit
+leeren Texturen weiter.
+
+### Was es kann und was nicht
+
+Gespielte Toene findet es lueckenlos, selbst das schwaechste Zehntel liegt bei
+1,00. Aber es meldet mit voller Sicherheit Oktaven, die niemand gespielt hat:
+in jedem zehnten Einzelton, gehaeuft in der kleinen Oktave, wo die linke Hand
+spielt - bei zwei Haenden 31 von 66 linken Toenen zwischen C3 und H3. Mehr
+Wartezeit hilft nicht; die Geister-Oktave bleibt bei 120, 250 und 600 ms.
+
+Es braucht mehr Zeit nach dem Anschlag als Basic Pitch, seine Filter schauen in
+der Zeit auch voraus: streng geprueft nimmt es nach 120 ms 106 von 460 an,
+nach 250 ms 280, nach 600 ms 312.
+
+### Die ehrlichere Pruefung
+
+Bei beiden Modellen scheitert die strenge Pruefung an derselben Stelle: an
+Obertoenen, die als fremde Toene zaehlen. Daher eine zweite Regel: was
+Oktave, Duodezime oder Doppeloktave ueber einer erwarteten Taste liegt, gilt
+nicht als fremd. Das ist nur ehrlich mit dem Preis dazu - ob ein solcher Ton
+fehlt oder zu viel ist, kann diese Regel nicht mehr sagen. Der Pruefstand
+fuehrt beides deshalb getrennt als "nicht pruefbar".
+
+250 ms nach dem Anschlag, Schwellen fuer beide Modelle nach demselben Raster
+gewaehlt:
+
+| | Basic Pitch | Onsets and Velocities |
+|---|---|---|
+| zwei Haende, je ein Ton | 117/120 | 116/120 |
+| Oktave und Doppeloktave | 44/48 | 47/48 |
+| Dreiklang rechts, Basston links | 13/24 | 23/24 |
+| neuer Klang ueber altem, Pedal 300 / 600 ms | 52/60, 57/60 | 59/60, 60/60 |
+| Legato | 58/60 | 57/60 |
+| **zusammen angenommen** | **410/460** | **437/460** |
+| um einen Halbton daneben, durchgewinkt | 0/1756 | 0/1756 |
+| um eine Oktave daneben | 29/1630 | 43/1630 |
+| anderer Ton vergessen | 3/1726 | 7/1726 |
+| anderer Ton zu viel | 2/663 | 0/663 |
+| Rechenzeit je Anschlag, Laptop | 90 ms, Grafik | 166 ms, Prozessor, ein Thread |
+| Lizenz | Apache 2.0 | GPL-3.0 |
+
+Nach 600 ms nimmt Onsets and Velocities 446 von 460 an.
+
+Die Rechenzeit gilt nur bei sichtbarem Fenster: im Hintergrund gebremst
+brauchte Basic Pitch bis zu einer Sekunde, und die 160 bis 200 ms aus dem
+vorigen Abschnitt waren so gebremst. Bei Onsets and Velocities steckt darin
+die Spektrumsrechnung als Filterbank, gut 350 Millionen Multiplikationen je
+Fenster; eine FFT braeuchte davon einen Bruchteil. Auf dem iPad ist beides
+ungemessen.
+
+### Was das heisst
+
+**Beide Modelle verwechseln nie einen Halbton** - 0 von 1756, bei jeder
+Wartezeit und jeder Regel. Das ist der Fehler, um den es beim Notenlesen am
+meisten geht: das falsche Vorzeichen, die Note eine Linie daneben.
+
+**Beide sind an Oktaven und Duodezimen blind**, und keine Wartezeit behebt
+das. Mit der ehrlicheren Regel geht ein Ton in der falschen Oktave in 2 bis 3 %
+der Faelle durch, und ob bei einer Oktave der obere Ton fehlt oder zu viel ist,
+laesst sich gar nicht sagen. In der Literatur ist das haeufig: die
+Oktavbaesse der Mondscheinsonate waeren ungeprueft.
+
+Onsets and Velocities ist bei Akkorden mit Bass deutlich besser, Basic Pitch
+schneller und frei von der GPL-Frage.
+
+Grenzen wie vorher: Aufnahmen 12 cm ueber den Saiten, ohne Raum, eine
+Anschlagstaerke, und Klaenge, die einfach addiert sind. Ein echtes Instrument
+hat keines der beiden gehoert.
+
+### Was offen bleibt
+
+- **Die Lizenzfrage**, falls Onsets and Velocities es werden soll.
+- **Die Rechenzeit auf dem iPad**, fuer beide.
+- **Die Oktaven.** Ein allgemeines Modell kann sie nicht, das ist jetzt zweimal
+  gemessen. Was bleibt, ist die Einmessung je Instrument: wie stark ist die
+  Oktave von C3 bei *diesem* Klavier, wenn nur C3 klingt.

@@ -19,4 +19,5 @@ the current TensorFlow.js 4 instead, which needs four of its parts as
 development dependencies and nothing in the published app.
 
 This folder is for `chord-lab.html` and is never published: Vite builds only
-`index.html` and `mic-test.html`.
+`index.html` and `mic-test.html`. `model.js` is the bench's adapter for the
+model, written here; it is not from the package.

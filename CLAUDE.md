@@ -104,15 +104,21 @@ and as runs. **Measure changes to the microphone path here, not in
 strike, and the app never sees one. That difference once hid a loop that named
 3 notes of 30. <http://localhost:5173/onset-lab.html>, about a minute to run.
 
-`chord-lab.html` asked whether Spotify's Basic Pitch could hear both hands at
-once. It renders chords from the recordings the way `SampledPiano` plays them
-and asks the model once per strike, as the app would, then counts both what it
-accepts and what it would wave through had a hand misread. The model sits in
-`lab/basic-pitch/` (900 KB, Apache 2.0, never published), and TensorFlow.js 4
-is a dev dependency for it alone. **Give the model one window per call**:
-given several it accepts them and returns different numbers, which the bench
-checks on every run. The answer was no — see `docs/PLAN.md`, 22.10.2026.
-<http://localhost:5173/chord-lab.html>, about five minutes.
+`chord-lab.html` asks whether a model could hear both hands at once. It renders
+chords from the recordings the way `SampledPiano` plays them and asks the model
+once per strike, as the app would, then counts both what it accepts and what it
+would wave through had a hand misread. `?model=` picks the model, each a
+`model.js` with the same exports: `basic-pitch` (Spotify, Apache 2.0, in
+`lab/basic-pitch/`, never published; TensorFlow.js 4 is a dev dependency for
+it) and `onsets-velocities` (Fernandez 2023). **The latter is GPL-3.0 and lives
+only in `lab/local/`, which git ignores** — it was exported to ONNX from the
+original in a separate Python environment, and onnxruntime-web is a dev
+dependency for it. Do not commit anything from there; `docs/PLAN.md`,
+22.10.2026, says why, and the README in that folder how to rebuild it. **Give Basic Pitch one window per
+call**: several exceed the GPU's texture limit and TensorFlow.js silently
+returns other numbers, which the bench checks on every run. `?delays=0.25,0.6`
+sets the waiting times. <http://localhost:5173/chord-lab.html>, about five
+minutes per model, and only with the window in view if the timings matter.
 
 **Deployment is automatic**: a push to `main` runs lint, tests, types and build,
 and publishes to <https://felix25192.github.io/piano-trainer/>.
@@ -280,12 +286,19 @@ aim at and still leaves the eyes the work of finding it on the page.
   the adversaries are the pedal, the chord still ringing from before, and the
   partials of a low note landing exactly where a higher expected note sits.
 
-  The shortcut was measured and is not one. Basic Pitch, asked with the
-  expected notes in hand, accepts three quarters of correctly played strikes
-  (351 of 460 in `chord-lab.html`) and waves through one extra note in
-  seventeen. To it, the upper note of an octave and the lower note's overtone
-  are nearly the same signal — and to any model that does not know the
-  instrument, they are.
+  Two models were measured as the shortcut, Basic Pitch and Onsets and
+  Velocities, in `chord-lab.html`. Asked strictly — every expected key, and
+  nothing else new — neither works: overtones count as foreign notes. Asked
+  honestly — the octave, twelfth and double octave above an expected key are
+  not counted as foreign, and the bench says what that leaves unchecked — they
+  accept 410 and 437 of 460 correct strikes 250 ms after the strike. **Neither
+  ever accepts a note a semitone off** (0 of 1756). A note in the wrong octave
+  gets through 2 to 3 % of the time, and whether the upper note of an octave
+  was played cannot be told at all: to any model that does not know the
+  instrument, it is the lower note's overtone. Onsets and Velocities is much
+  better at chords over a bass but is GPL-3.0 — in the app only if the app
+  goes GPL, which is undecided. Neither has heard a real piano, and neither
+  has been timed on the iPad.
 - **The microphone has never heard a real piano.** Everything measured so far
   was a recording pushed through the detector, or a hummed note. The level,
   the room and the attack of an actual instrument are unmeasured. This is the
