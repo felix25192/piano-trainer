@@ -28,7 +28,11 @@ Linie. Spike A ist in Safari auf dem iPad bestanden, gemessen und nicht
 vermutet.
 
 Veroeffentlicht unter <https://felix25192.github.io/piano-trainer/>, bei jedem
-Push auf `main` automatisch aktualisiert. 259 Tests.
+Push auf `main` automatisch aktualisiert. 269 Tests.
+
+**Seit dem 10.11. spielt auch ein MIDI-Keyboard die App**, beide Haende
+zugleich, am Rechner in Chrome und Edge. Am echten Kawai ist das noch nicht
+ausprobiert, das ist Teil E der Testrunde.
 
 **Als Naechstes.** Der Mikrofonknopf ist gebaut, aber am Instrument noch nie
 ausprobiert - das ist der offene Faden. Am 24.09. hat sich gezeigt, dass er in
@@ -1813,3 +1817,70 @@ Gemessen wird am echten Instrument, am Kawai mit MIDI als Messlatte.
 
 Die Schritte 2 bis 5 haengen nicht an der Testrunde und laufen neben ihr her.
 Schritt 6 ist der lange.
+
+## MIDI angeschlossen (10.11.2026)
+
+Schritt 2 aus dem Abschnitt davor. `MidiInput` lag seit dem 22.09. fertig da
+und hing nirgends.
+
+### Was jetzt geht
+
+Unten neben dem Mikrofon sitzt ein Klaviatur-Symbol, aber nur, wo der Browser
+Web MIDI kennt: am Rechner Chrome und Edge, in Safari nie. Ein Tippen fragt
+nach dem Zugriff und uebergibt der Engine das Keyboard. Beide Haende gehen
+zugleich, denn ein Tastendruck ist eine Tatsache, und ein Akkord sind mehrere
+davon. Der Matcher konnte das seit Phase 2, er hat nur nie einen Akkord
+bekommen.
+
+### Entschieden, und warum
+
+- **Immer nur eine Eingabe.** Am Kawai mit offenem Mikrofon kaeme jeder Ton
+  zweimal an: ueber das Kabel, und eine Zehntelsekunde spaeter aus den
+  Lautsprechern des Kawai. Bis dahin steht die Markierung schon beim naechsten
+  Ton, und der zweite waere falsch. Deshalb schaltet jedes das andere ab. Fuer
+  Schritt 6, wo MIDI das Mikrofon messen soll, braucht es beide zugleich, aber
+  auf einem Pruefstand und nicht in der App.
+- **MIDI bleibt beim Vorspielen an**, anders als das Mikrofon. Es haelt keine
+  Audio-Sitzung, also gibt es nichts, worum die beiden streiten koennten.
+  Tasten waehrend des Vorspielens werden ueberhoert statt bewertet; die
+  Markierung gehoert dann der Wiedergabe.
+- **Auch der Weg ueber die Startseite laesst es an.** Wer am Kawai sitzt,
+  wechselt Stuecke, nicht die Eingabe.
+- **Aus- und Einschalten wird bemerkt.** Wird das Kawai aus- und wieder
+  eingeschaltet oder das Kabel gezogen, kommt es als neue Verbindung zurueck.
+  Der Adapter haengt sich dann neu an, und solange nichts verbunden ist, sagt
+  die App das.
+- **Beim Ausschalten wird das Geraet freigegeben.** Unter Windows kann ein
+  MIDI-Anschluss, den ein Programm offen haelt, fuer alle anderen gesperrt
+  sein.
+- **Kein Einschalten von selbst.** Der Browser fragt beim ersten Mal nach dem
+  Zugriff, und eine Frage, die ungefragt beim Oeffnen der Seite kommt, ist
+  schlechter als ein Tippen.
+
+### Geprueft
+
+Zehn neue Tests fuer den Adapter, gegen ein nachgestelltes Web MIDI. Sie
+pruefen, welche Bytes als Anschlag zaehlen: Note-on mit Anschlagstaerke null
+ist das Loslassen, so beendet das Kawai seine Toene, und Pedal, Pitch Bend und
+Active Sensing zaehlen nicht. Dazu ein aus- und wieder eingeschaltetes
+Keyboard, ein zweites, das spaeter dazukommt, die Freigabe beim Ausschalten,
+und ein Ausschalten, waehrend der Browser noch nach dem Zugriff fragt. 269
+Tests.
+
+In der App, im eingebauten Browser mit einem nachgestellten Kawai, Tonleiter
+C-Dur, beide Haende parallel:
+
+- Die rechte Hand allein schiebt nicht weiter, erst mit der linken.
+- Ein Akkord aus beiden Haenden schiebt weiter.
+- Ein F statt E wird rot und bleibt stehen. Das richtige E danach nimmt das
+  Rot weg und geht weiter.
+- Loslassen und Pedal aendern nichts.
+- Kabel gezogen: ein Hinweis erscheint, Tasten gehen ins Leere. Wieder
+  angesteckt: der Hinweis verschwindet, und es geht weiter.
+- Waehrend des Vorspielens bleibt MIDI an, und ein falscher Ton bleibt
+  folgenlos.
+- Das Mikrofon einschalten schaltet MIDI ab und gibt den Anschluss frei.
+- Keine Fehler in der Konsole.
+
+Am echten Kawai ist das ungeprueft. Dafuer gibt es jetzt Teil E der
+Testrunde, am Laptop und, ohne Geld, am iPad ueber den "Web MIDI Browser".

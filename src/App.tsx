@@ -19,6 +19,7 @@ import { buildSchedule, stepAtTime, type Schedule } from "./core/playback";
 import type { NoteOutput } from "./core/NoteOutput";
 import { SampledPiano } from "./adapters/SampledPiano";
 import { MicInput } from "./adapters/MicInput";
+import { MidiInput } from "./adapters/MidiInput";
 import type { Heard, Refusal } from "./core/hearing";
 import { midiToName } from "./core/pitch";
 import { isAudioSupported } from "./adapters/audioSession";
@@ -33,11 +34,11 @@ import "./App.css";
  * and the instrument drives the app. So the score gets the room and the
  * controls stay out of the way.
  *
- * The microphone does the driving now. The two buttons beside it still stand
- * in for an instrument and are worth keeping: they call the same `play()`,
- * which is exactly what the NoteInputSource port is for — from there down
- * nothing can tell a tapped button from an inferred pitch or from a key press
- * over a cable.
+ * The microphone or a MIDI keyboard does the driving now. The two buttons
+ * beside them still stand in for an instrument and are worth keeping: they
+ * call the same `play()`, which is exactly what the NoteInputSource port is
+ * for — from there down nothing can tell a tapped button from an inferred
+ * pitch or from a key press over a cable.
  */
 
 /**
@@ -313,6 +314,10 @@ export default function App() {
   const micRef = useRef<MicInput | null>(null);
   /** Unsubscribes the engine from the microphone. */
   const unlistenRef = useRef<(() => void) | null>(null);
+  /** The MIDI keyboard, built on the first tap and kept afterwards. */
+  const midiRef = useRef<MidiInput | null>(null);
+  /** Unsubscribes the engine from the MIDI keyboard. */
+  const unlistenMidiRef = useRef<(() => void) | null>(null);
 
   const [view, setView] = useState<View>("home");
   const [selected, setSelected] = useState<Selection>(BUNDLED[0]);
@@ -347,6 +352,14 @@ export default function App() {
    * session and the two need different categories — see core/audioMode.
    */
   const [listening, setListening] = useState(false);
+  /**
+   * The keyboards MIDI reports, or null while MIDI is off.
+   *
+   * Empty while on means the keyboard went away — switched off, or the cable
+   * pulled — and it is picked up again as soon as it returns.
+   */
+  const [midiDevices, setMidiDevices] = useState<string[] | null>(null);
+  const [midiError, setMidiError] = useState<string | null>(null);
   /**
    * What the microphone made of each strike, newest first — only while the
    * protocol is switched on.
@@ -453,6 +466,13 @@ export default function App() {
     setListening(false);
   }, []);
 
+  const stopMidi = useCallback(() => {
+    unlistenMidiRef.current?.();
+    unlistenMidiRef.current = null;
+    midiRef.current?.stop();
+    setMidiDevices(null);
+  }, []);
+
   /**
    * Keeps the highlight on the note being heard.
    *
@@ -513,6 +533,9 @@ export default function App() {
       unlistenRef.current?.();
       micRef.current?.stop();
       micRef.current = null;
+      unlistenMidiRef.current?.();
+      midiRef.current?.stop();
+      midiRef.current = null;
     };
   }, []);
 
@@ -856,6 +879,8 @@ export default function App() {
   const busy = status !== "bereit";
   const audioSupported = isAudioSupported();
   const micSupported = MicInput.isSupported();
+  const midiSupported = MidiInput.isSupported();
+  const midiLabel = midiDevices?.length ? midiDevices.join(", ") : "kein Gerät verbunden";
   const playing = playback !== "idle";
   /**
    * The tempo in force where the highlight stands, so the setting can name
@@ -935,6 +960,7 @@ export default function App() {
     }
 
     stopPlayback();
+    stopMidi();
     setAudioError(null);
 
     micRef.current ??= new MicInput();
@@ -961,6 +987,50 @@ export default function App() {
     };
     setProtocol([]);
     setListening(true);
+  }
+
+  /**
+   * Hands the engine over to a MIDI keyboard, or takes it back.
+   *
+   * One input drives the engine at a time. Played on the Kawai with the
+   * microphone open, every note would arrive twice: over the cable, and a
+   * tenth of a second later out of the piano's own speakers — by then judged
+   * against the next note, and marked wrong. So each switches the other off.
+   *
+   * Unlike the microphone it stays on while a passage plays back, and on the
+   * way to the home screen and back: it holds no audio, so there is nothing to
+   * collide with. Keys pressed during playback are ignored rather than judged
+   * — the highlight follows the sound until it stops.
+   */
+  async function toggleMidi() {
+    if (midiDevices !== null) {
+      stopMidi();
+      return;
+    }
+
+    stopListening();
+    setMidiError(null);
+
+    midiRef.current ??= new MidiInput();
+    const midi = midiRef.current;
+
+    try {
+      await midi.start();
+    } catch (e: unknown) {
+      setMidiError(describeError(e));
+      return;
+    }
+
+    const offNote = midi.onNoteOn((note) => {
+      if (scheduleRef.current) return;
+      play(note.midi);
+    });
+    const offDevices = midi.onDevicesChange(setMidiDevices);
+    unlistenMidiRef.current = () => {
+      offNote();
+      offDevices();
+    };
+    setMidiDevices(midi.deviceNames);
   }
 
   /** Changing the speed mid-passage would need a new schedule; simpler to stop. */
@@ -1126,6 +1196,12 @@ export default function App() {
 
       {error && <pre className="error-box">{error}</pre>}
       {audioError && <pre className="error-box">{audioError}</pre>}
+      {midiError && <pre className="error-box">{midiError}</pre>}
+      {midiDevices?.length === 0 && (
+        <pre className="error-box">
+          Das MIDI-Gerät ist getrennt. Sobald es wieder eingeschaltet und verbunden ist, geht es weiter.
+        </pre>
+      )}
 
       <div
         className={"scroller" + (progress?.hasError ? " wrong" : "")}
@@ -1182,6 +1258,30 @@ export default function App() {
               <rect x="9" y="3" width="6" height="11" rx="3" />
               <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0" />
               <path d="M12 18v3" />
+            </svg>
+          </button>
+        )}
+        {/*
+          A keyboard over a cable: exact, and both hands at once. Only where
+          the browser has Web MIDI at all, so never in Safari.
+        */}
+        {midiSupported && (
+          <button
+            className={"secondary" + (midiDevices !== null ? " on" : "")}
+            onClick={toggleMidi}
+            aria-label={
+              midiDevices !== null ? `MIDI ausschalten (${midiLabel})` : "Mit MIDI-Keyboard spielen"
+            }
+            title={midiDevices !== null ? `MIDI: ${midiLabel}` : "Mit MIDI-Keyboard spielen"}
+            disabled={busy}
+          >
+            {/* Four white keys F G A B, so the three black ones are right. */}
+            <svg viewBox="0 0 24 24" className="glyph" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <path d="M7.5 13v6M12 13v6M16.5 13v6" />
+              <rect x="6.2" y="5" width="2.6" height="8" fill="currentColor" />
+              <rect x="10.7" y="5" width="2.6" height="8" fill="currentColor" />
+              <rect x="15.2" y="5" width="2.6" height="8" fill="currentColor" />
             </svg>
           </button>
         )}
@@ -1468,6 +1568,17 @@ export default function App() {
                 </div>
                 <p className="hint">Von Hand einstellen schaltet die automatische Anpassung ab.</p>
               </div>
+
+              {midiSupported && (
+                <div className="field">
+                  <span>MIDI</span>
+                  <p className="hint">
+                    {midiDevices === null
+                      ? "Aus. Das Keyboard einschalten, per USB verbinden und unten auf das Klaviatur-Symbol tippen."
+                      : `An: ${midiLabel}. Beide Hände zugleich, ohne Mikrofon.`}
+                  </p>
+                </div>
+              )}
 
               {micSupported && (
                 <div className="field">

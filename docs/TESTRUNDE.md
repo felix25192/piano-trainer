@@ -1,7 +1,8 @@
 # Testrunde am Klavier, mit dem iPad
 
-Stand: 22.10.2026. Eine Runde, etwa 45 Minuten, an beiden Instrumenten. Was
-sie klaeren soll, steht in `PLAN.md` unter dem Abschnitt vom 22.10.2026.
+Stand: 22.10.2026, Teil E ergaenzt am 10.11.2026. Eine Runde, etwa eine
+Stunde, an beiden Instrumenten. Was sie klaeren soll, steht in `PLAN.md` unter
+den Abschnitten vom 22.10. und vom 10.11.2026.
 
 Gezaehlt wird, nicht beurteilt: "11 von 15" hilft, "ging so" nicht. Wo die
 Markierung haengen bleibt oder rot wird, einen Screenshot machen (obere Taste
@@ -90,8 +91,37 @@ Velocities darf wegen der GPL nicht auf die oeffentliche Seite.
 - [ ] Vorher den Stromsparmodus ausschalten (Einstellungen → Batterie), er
       bremst den Prozessor; falls er an war, das dazuschreiben.
 
+## E. MIDI am Kawai
+
+Neu seit dem 10.11. Am Kawai muss das Mikrofon nicht der einzige Weg sein: ueber
+MIDI kommt jede Taste exakt an, beide Haende zugleich. In der App ist das
+gebaut und gegen ein nachgestelltes Keyboard geprueft. Ob die echten Geraete
+zusammenfinden, ist ungeprueft.
+
+Am Laptop, falls er ans Kawai kommt:
+
+- [ ] Das Kawai per USB-Kabel (Buchse "USB to Host") an den Laptop. Notieren,
+      ob Windows nach einem Treiber oder nach Adminrechten fragt.
+- [ ] In Chrome oder Edge die App oeffnen, ein Stueck waehlen, unten auf das
+      **Klaviatur-Symbol** tippen und den Zugriff erlauben. Leuchtet es, und
+      nennt das Zahnrad unter "MIDI" das Kawai?
+- [ ] Tonleiter C-Dur, 1 Oktave, Parallel, **beide Haende**: _ von 15.
+- [ ] Bach, Menuett G-Dur, beide Haende, Takt 1 bis 8: bis Takt _.
+- [ ] Das Kawai aus- und wieder einschalten, ohne die App anzufassen: geht es
+      danach weiter?
+
+Am iPad, ohne Geld:
+
+- [ ] Den "Web MIDI Browser" aus dem App Store laden und darin
+      <https://felix25192.github.io/piano-trainer/> oeffnen. Erscheint unten
+      das Klaviatur-Symbol? Wenn nicht, ist hier Schluss, und das ist auch ein
+      Ergebnis.
+- [ ] Das Kawai per USB-Kabel ans iPad, je nach iPad mit Adapter, oder ueber
+      Bluetooth, falls die App das anbietet. Dann derselbe Durchgang wie am
+      Laptop: _ von 15.
+
 ## Zurueckmelden
 
-Die Tabelle aus A, die Antworten aus B und C, die Screenshots, die
+Die Tabelle aus A, die Antworten aus B, C und E, die Screenshots, die
 iPadOS-Version und die Notizen zur Vorbereitung. Einfach in den Chat, die
 Auswertung kommt danach in `PLAN.md`.

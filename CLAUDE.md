@@ -53,8 +53,8 @@ src/Home.tsx    The start screen. Reports which mode was tapped; knows
   struck note out. The bench, the tests and the app all run this one
 - `core/NoteOutput.ts` — **the port** every sound output implements
 - `adapters/osmdScore.ts` — the only file allowed to know OSMD's object graph
-- `adapters/MidiInput.ts` — Web MIDI (desktop only; Safari has none, so on
-  the iPad MIDI needs the native shell on the `ios-spike` branch)
+- `adapters/MidiInput.ts` — Web MIDI: exact, both hands. Chrome and Edge on
+  the desktop; Safari has none, see the end of What is open
 - `adapters/MicInput.ts` — the microphone: strike, then pitch. Monophonic
 - `adapters/audioSession.ts` — **the only file that touches the device's
   audio**: the context, the session category, the microphone
@@ -78,7 +78,7 @@ export PATH="/c/Program Files/nodejs:$PATH"
 ```
 
 ```bash
-npx vitest run          # 259 tests
+npx vitest run          # 269 tests
 npx tsc -b --noEmit     # types
 npx oxlint              # lint; silence means clean
 npm run build
@@ -276,6 +276,17 @@ and plays; after a simulated deploy it loads the new code and drops the old.
 Listening and playing back can never both hold the device, and the buttons say
 so — each greys the other out while it runs.
 
+**A MIDI keyboard plays the app** wherever the browser has Web MIDI, which
+means Chrome and Edge on the desktop. A keyboard button beside the microphone
+hands the engine over to it, and both hands work at once: a key press is a
+fact, and a chord is simply several. Only one input drives the engine at a
+time, because otherwise the Kawai's own speakers would hand every note to the
+microphone a second time, a tenth of a second late, to be judged against the
+next note. MIDI holds no audio, so it stays on through playback (keys pressed
+meanwhile are ignored) and across the home screen. A keyboard switched off and
+on again is picked up by itself. Verified in the app against a stand-in for
+Web MIDI, not yet against the Kawai.
+
 The expected notes are deliberately **not** displayed. Naming them turns the
 exercise into reading text. A wrong note turns the highlight red instead.
 Playing them back is the deliberate exception: it gives the ear something to
@@ -288,8 +299,8 @@ microphone, plus a bar loop and a tempo mode in which a mistake does not stop
 the music. The order of work, and the numbers that decide when two hands count
 as working, are in `docs/PLAN.md` under that date — fixed before the first
 measurement at an instrument, so that the target cannot drift to wherever the
-results land. The test round (`docs/TESTRUNDE.md`) has not run yet, and
-`MidiInput` is built but not yet connected to the app.
+results land. The test round (`docs/TESTRUNDE.md`) has not run yet. MIDI is
+connected, step 2 of that order, but has never met the Kawai.
 
 - **Spike A, from the home screen.** In Safari it passed — see What works.
   Launched from the home screen it is still untested, which is where the
@@ -394,8 +405,9 @@ results land. The test round (`docs/TESTRUNDE.md`) has not run yet, and
   `public/scores/SOURCES.md`.
 
 Safari implements no Web MIDI on any platform, so a MIDI keyboard can only
-reach the iPad through a native wrapper. On the `ios-spike` branch that
-wrapper exists: Capacitor 8, built unsigned by GitHub Actions on macOS since
+reach the iPad through a native wrapper. Someone else's may do: the "Web MIDI
+Browser" app gives web pages MIDI, untested here and part E of the test round.
+Our own is on the `ios-spike` branch: Capacitor 8, built unsigned by GitHub Actions on macOS since
 there is no Mac here, with its own CoreMIDI bridge in `native/midi-bridge`.
 It compiles; it has never run. Signing needs an Apple Developer account,
 which is off the table for now (22.10.2026): the microphone is to carry both

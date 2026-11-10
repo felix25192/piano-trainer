@@ -33,6 +33,8 @@ No accounts, no gamification, no pressure.
   pedal where the score writes it.
 - **Played through the microphone**, one note at a time — and so one hand at a
   time.
+- **Played on a MIDI keyboard**, both hands at once, in Chrome or Edge on the
+  desktop.
 - **Works offline** once it has been opened.
 
 ## Musical correctness
@@ -100,10 +102,10 @@ real score.
   see [`docs/TESTRUNDE.md`](docs/TESTRUNDE.md).
 - **Chords through the microphone** are not done, and both hands sounding
   together are a chord too.
-- **MIDI.** An adapter for Web MIDI exists but is not wired into the interface
-  yet. Safari has no Web MIDI at all, so an iPad needs a native shell; one
-  exists on the `ios-spike` branch, built by GitHub Actions without a Mac. It
-  compiles and has never run.
+- **MIDI has not met a real keyboard yet**, only a stand-in for Web MIDI.
+  Safari has no Web MIDI at all, so an iPad needs an app that brings its own,
+  or a native shell; one exists on the `ios-spike` branch, built by GitHub
+  Actions without a Mac. It compiles and has never run.
 - Dynamics are ignored when playing back.
 
 [`docs/PLAN.md`](docs/PLAN.md) is the running log, in German: every decision,
