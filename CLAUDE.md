@@ -283,6 +283,14 @@ aim at and still leaves the eyes the work of finding it on the page.
 
 ## What is open
 
+**What "finished" means** was set on 10.11.2026: both hands through the
+microphone, plus a bar loop and a tempo mode in which a mistake does not stop
+the music. The order of work, and the numbers that decide when two hands count
+as working, are in `docs/PLAN.md` under that date — fixed before the first
+measurement at an instrument, so that the target cannot drift to wherever the
+results land. The test round (`docs/TESTRUNDE.md`) has not run yet, and
+`MidiInput` is built but not yet connected to the app.
+
 - **Spike A, from the home screen.** In Safari it passed — see What works.
   Launched from the home screen it is still untested, which is where the
   [long-standing WebKit bug](https://bugs.webkit.org/show_bug.cgi?id=185448)
@@ -390,8 +398,8 @@ reach the iPad through a native wrapper. On the `ios-spike` branch that
 wrapper exists: Capacitor 8, built unsigned by GitHub Actions on macOS since
 there is no Mac here, with its own CoreMIDI bridge in `native/midi-bridge`.
 It compiles; it has never run. Signing needs an Apple Developer account,
-and that decision waits for the test round at the instrument
-(`docs/TESTRUNDE.md`).
+which is off the table for now (22.10.2026): the microphone is to carry both
+hands instead, so the iPad needs nothing but Safari.
 
 ## History
 

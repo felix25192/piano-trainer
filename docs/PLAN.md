@@ -1,6 +1,6 @@
 # Projektplan
 
-Stand: 22.10.2026
+Stand: 10.11.2026
 
 > **Wie diese Datei zu lesen ist:** Unten stehen die Abschnitte in der
 > Reihenfolge ihrer Entstehung, jeder datiert. Zum Einsteigen reicht dieser
@@ -46,13 +46,18 @@ Instrument: Akkorde ueber das Mikrofon (Stufe 2, Wochen).
 
 **Am 22.10. wieder aufgenommen, und zuerst geht es ans Instrument**: eine
 Testrunde mit dem iPad am Kawai und am akustischen Klavier, die Checkliste
-steht in `docs/TESTRUNDE.md`. Erst danach wird ueber das Apple-Konto
-entschieden. Begruendet im Abschnitt vom 22.10.
+steht in `docs/TESTRUNDE.md`. Gelaufen ist sie noch nicht (Stand 10.11.).
+Das Apple-Konto entfaellt vorerst, begruendet im Abschnitt vom 22.10.
+
+**Am 10.11. festgelegt, was "fertig" heisst**: beide Haende ueber das
+Mikrofon, dazu die Takt-Schleife und der Tempo-Modus. Die Reihenfolge, und
+woran gemessen wird, ob zwei Haende gehen, stehen im Abschnitt vom 10.11.
 
 **Nativ geht doch, ohne Mac** - am 24.09. im Vorversuch gezeigt, auf dem
 Branch `ios-spike`: GitHub Actions baut die iOS-Huelle auf seinen
 macOS-Rechnern, mit einer eigenen MIDI-Bruecke. Fehlt noch das Signieren, und
-dafuer ein Apple-Developer-Konto (99 USD im Jahr). Das Mikrofon bleibt fuer
+dafuer ein Apple-Developer-Konto (99 USD im Jahr), am 22.10. vorerst
+verworfen. Das Mikrofon bleibt fuer
 das akustische Klavier der einzige Weg.
 
 **Noch nie getestet:** die App am echten Instrument. Bis das passiert ist,
@@ -1726,3 +1731,85 @@ Entwicklungsabhaengigkeiten, weil eine veroeffentlichte Seite es braucht.
 
 Die Messung selbst steht als Teil D in `docs/TESTRUNDE.md` und braucht kein
 Klavier.
+
+## Was "fertig" heisst (10.11.2026)
+
+Knapp drei Wochen Pause, der Stand unveraendert: 259 Tests gruen, der letzte
+Deploy vom 22.10. durchgelaufen. Die Testrunde ist noch nicht gelaufen, jede
+Zahl zum Mikrofon stammt weiter vom Pruefstand.
+
+Felix will das Projekt fertig bringen. Dafuer braucht "fertig" eine Grenze:
+was dazugehoert, und woran man merkt, dass es erreicht ist. Sonst fehlt immer
+noch etwas Sinnvolles, und das Ende kommt nie.
+
+### Beschlossen
+
+**Beide Haende ueber das Mikrofon gehoeren dazu.** Damit liegt der teuerste
+Teil, und der mit dem offensten Ausgang, innerhalb der Grenze. Ehrlich dazu:
+zwei Modelle sind gemessen, beide verwechseln nie einen Halbton, und beide
+sind an Oktaven blind (Abschnitte vom 22.10.). Was bleibt, ist die Einmessung
+je Instrument, so wie Phase 3 sie von Anfang an vorsah: "harmonische Vorlagen
+der erwarteten Toene". Das sind Wochen, und ob es traegt, zeigt erst ein
+echtes Klavier.
+
+**Dazu zwei Lesefunktionen: die Takt-Schleife und der Tempo-Modus.** Beide
+trainieren das Lesen, beide sind seit dem 22.10. beschlossen. Die
+Fehlerdiagnose und endlos neues Lesematerial gehoeren nicht zu "fertig". Sie
+bleiben im Plan fuer danach.
+
+### Klargestellt
+
+Am 22.10. stand zum Apple-Konto an zwei Stellen Verschiedenes: erst "nach der
+Testrunde entscheiden", weiter unten "kein Geld, entfaellt vorerst". Das
+Zweite gilt, und es passt zum Beschluss oben: hoert das Mikrofon beide Haende,
+braucht das iPad nichts als Safari. Kopf dieser Datei und `CLAUDE.md` sagen
+jetzt dasselbe.
+
+### Woran "beide Haende gehen" gemessen wird
+
+Ein Ziel, das erst nach der Messung festgelegt wird, landet dort, wo die
+Zahlen gerade sind. Deshalb jetzt, vor der ersten Messung am Instrument, als
+Vorschlag:
+
+- **Ein Halbton daneben geht nie durch.** Das ist der Fehler, um den es beim
+  Lesen geht: das vergessene Vorzeichen, die Note eine Linie daneben. Am
+  Pruefstand schaffen das heute beide Modelle, 0 von 1756.
+- **Mindestens 95 von 100 richtig gespielten Anschlaegen beider Haende werden
+  angenommen**, an beiden Instrumenten. Am Pruefstand liegt Basic Pitch bei
+  89, Onsets and Velocities bei 95.
+- **Ein Ton in der falschen Oktave geht seltener durch als heute am
+  Pruefstand**, wo es 2 bis 3 von 100 sind. Und wo die App eine Oktave nicht
+  pruefen kann, weiss sie es und sagt es im Anschlagsprotokoll, statt zu
+  raten.
+- **Die Antwort kommt spaetestens 300 ms nach dem Anschlag**, auf dem iPad.
+  Basic Pitch wartet 250 ms und rechnet am Laptop 27; das iPad ist
+  ungemessen, das klaert Teil D der Testrunde.
+
+Gemessen wird am echten Instrument, am Kawai mit MIDI als Messlatte.
+
+### Reihenfolge
+
+1. **Die Testrunde**, `docs/TESTRUNDE.md`, bei Felix. Teil D geht sofort und
+   ohne Klavier.
+2. **MIDI anschliessen.** `MidiInput` ist seit dem 22.09. fertig und haengt
+   nirgends; Phase 2 sagte damals, danach sei die App "funktional
+   vollstaendig". Danach spielt das Kawai die App am Laptop beidhaendig, in
+   Chrome oder Edge, und am iPad vielleicht ueber den "Web MIDI Browser" aus
+   dem App Store. Vor allem aber wird MIDI die Messlatte fuer Schritt 6: was
+   das Mikrofon hoert, steht neben dem, was wirklich gespielt wurde. Ob der
+   Firmenlaptop ans Kawai kommt, ist noch offen.
+3. **Aufraeumen vor dem Ausbau.** Der Platzhalterknopf "richtigen Ton spielen"
+   weicht dem Mikrofon, ein Fehler zeigt sich nicht nur in Farbe, und
+   `App.tsx` wird geteilt, bevor Schleife und Tempo-Modus dazukommen: 1702
+   Zeilen ohne Test sollen nicht weiter wachsen.
+4. **Die Takt-Schleife.**
+5. **Der Tempo-Modus.** Hier zaehlt zum ersten Mal der Rhythmus, also braucht
+   es eine Regel, wann eine Note als verpasst gilt. Eigener Entwurf vorher.
+6. **Beide Haende ueber das Mikrofon.** Nach der Testrunde, mit Aufnahmen vom
+   echten Instrument statt nur vom Pruefstand. Vermutlich eine Mischung: ein
+   Modell schlaegt vor, eine Pruefung, die das Instrument kennt, entscheidet
+   an den Oktaven. Eigener Entwurf, sobald die Zahlen vom Instrument da sind.
+   Die GPL-Frage kommt nur zurueck, falls Basic Pitch dafuer nicht reicht.
+
+Die Schritte 2 bis 5 haengen nicht an der Testrunde und laufen neben ihr her.
+Schritt 6 ist der lange.
