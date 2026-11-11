@@ -86,3 +86,17 @@ function assertInteger(midi: number): void {
     throw new RangeError(`MIDI note must be an integer, got ${midi}`);
   }
 }
+
+/**
+ * A key by name, with both names for a black one: "C4", "C♯4/D♭4".
+ *
+ * What the microphone hears is a key, not a note. A frequency carries no
+ * spelling, and the score's spelling is not in the engine's data, so calling a
+ * heard E flat "D#" in E flat major would be wrong. A black key gets both.
+ */
+export function keyLabel(midi: number): string {
+  const sharp = midiToName(midi, "sharp");
+  const flat = midiToName(midi, "flat");
+  if (sharp === flat) return sharp;
+  return `${sharp.replace("#", "♯")}/${flat.replace("b", "♭")}`;
+}

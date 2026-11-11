@@ -28,7 +28,7 @@ akustischen Klavier**, sonst gleich.
 
 Uebung: Startseite → Tonleitern & Uebungen → Tonleiter, C-Dur, 1 Oktave,
 Parallel. Oben in der Kopfzeile auf **rechte Hand** schalten, dann unten den
-Mikrofonknopf.
+Knopf **Mikrofon**.
 
 | # | Durchgang | Kawai | akustisch |
 |---|---|---|---|
@@ -102,8 +102,8 @@ Am Laptop, falls er ans Kawai kommt:
 
 - [ ] Das Kawai per USB-Kabel (Buchse "USB to Host") an den Laptop. Notieren,
       ob Windows nach einem Treiber oder nach Adminrechten fragt.
-- [ ] In Chrome oder Edge die App oeffnen, ein Stueck waehlen, unten auf das
-      **Klaviatur-Symbol** tippen und den Zugriff erlauben. Leuchtet es, und
+- [ ] In Chrome oder Edge die App oeffnen, ein Stueck waehlen, unten auf den
+      Knopf **MIDI** tippen und den Zugriff erlauben. Leuchtet er, und
       nennt das Zahnrad unter "MIDI" das Kawai?
 - [ ] Tonleiter C-Dur, 1 Oktave, Parallel, **beide Haende**: _ von 15.
 - [ ] Bach, Menuett G-Dur, beide Haende, Takt 1 bis 8: bis Takt _.
@@ -114,7 +114,7 @@ Am iPad, ohne Geld:
 
 - [ ] Den "Web MIDI Browser" aus dem App Store laden und darin
       <https://felix25192.github.io/piano-trainer/> oeffnen. Erscheint unten
-      das Klaviatur-Symbol? Wenn nicht, ist hier Schluss, und das ist auch ein
+      der Knopf **MIDI**? Wenn nicht, ist hier Schluss, und das ist auch ein
       Ergebnis.
 - [ ] Das Kawai per USB-Kabel ans iPad, je nach iPad mit Adapter, oder ueber
       Bluetooth, falls die App das anbietet. Dann derselbe Durchgang wie am

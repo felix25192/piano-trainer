@@ -1,5 +1,13 @@
 import { fingeringFor, fingerSequence, type Hand } from "./fingering";
-import { ascendingScale, scaleDegrees, type Key, type Pitch } from "./theory";
+import {
+  ascendingScale,
+  keyOf,
+  scaleDegrees,
+  type Key,
+  type Letter,
+  type Mode,
+  type Pitch,
+} from "./theory";
 
 /**
  * Builds the notes of a practice exercise for both hands.
@@ -218,4 +226,75 @@ export function keyName(key: Key): string {
   const note = GERMAN_NOTE[`${key.tonic}${key.tonicAlter}`] ?? key.tonic;
   // Minor keys are written in lower case in German.
   return key.mode === "major" ? `${note}-Dur` : `${note.toLowerCase()}-Moll`;
+}
+
+/*
+ * The keys offered, in circle-of-fifths order: C, then one sharp more each
+ * step, wrapping round through the flats back to F.
+ *
+ * Twelve of each, and the minor list holds the relative minor of the major
+ * beside it. Spelled the way they are normally written, which costs one
+ * enharmonic step: F sharp major stands beside E flat minor, the relative of
+ * its twin G flat major. D sharp minor would be the strict answer, but it
+ * takes six sharps and then raises its seventh to C double sharp; E flat minor
+ * takes six flats and a plain D natural.
+ */
+const MAJOR_TONICS: Array<[Letter, number]> = [
+  ["C", 0], ["G", 0], ["D", 0], ["A", 0], ["E", 0], ["B", 0],
+  ["F", 1], ["D", -1], ["A", -1], ["E", -1], ["B", -1], ["F", 0],
+];
+
+const MINOR_TONICS: Array<[Letter, number]> = [
+  ["A", 0], ["E", 0], ["B", 0], ["F", 1], ["C", 1], ["G", 1],
+  ["E", -1], ["B", -1], ["F", 0], ["C", 0], ["G", 0], ["D", 0],
+];
+
+export const MAJOR_KEYS: readonly Key[] = MAJOR_TONICS.map(([t, a]) => keyOf(t, a, "major"));
+export const MINOR_KEYS: readonly Key[] = MINOR_TONICS.map(([t, a]) => keyOf(t, a, "harmonicMinor"));
+
+const KINDS: readonly ExerciseKind[] = ["scale", "arpeggio", "fiveFinger"];
+const MOTIONS: readonly Motion[] = ["parallel", "contrary"];
+const MODES: readonly Mode[] = ["major", "harmonicMinor"];
+
+/**
+ * An exercise written as a short string, e.g. "ex:scale:D:0:major:2:parallel:true".
+ *
+ * This is how the last exercise survives a reload: nothing is stored but the
+ * key, and the exercise is simply built again from it. The format is
+ * therefore fixed — a key an older version saved must still open the same
+ * exercise.
+ */
+export function exerciseKey(options: ExerciseOptions): string {
+  const { kind, key, octaves, motion, fingerings } = options;
+  return `ex:${kind}:${key.tonic}:${key.tonicAlter}:${key.mode}:${octaves}:${motion}:${fingerings}`;
+}
+
+/**
+ * Reads a key from `exerciseKey` back, or returns null.
+ *
+ * Refuses what it does not recognise rather than guessing: a key that is not
+ * among the offered ones, an octave count outside one to four, a word it does
+ * not know. Whatever comes out of storage is opened as an exercise, and a
+ * guessed one would be an exercise nobody chose.
+ */
+export function parseExerciseKey(text: string): ExerciseOptions | null {
+  const parts = text.split(":");
+  if (parts.length !== 8 || parts[0] !== "ex") return null;
+  const [, kind, tonic, alter, mode, octaves, motion, fingerings] = parts;
+
+  if (!includes(KINDS, kind) || !includes(MOTIONS, motion) || !includes(MODES, mode)) return null;
+  if (fingerings !== "true" && fingerings !== "false") return null;
+
+  const count = Number(octaves);
+  if (!Number.isInteger(count) || count < 1 || count > 4) return null;
+
+  const offered = mode === "major" ? MAJOR_KEYS : MINOR_KEYS;
+  const key = offered.find((k) => k.tonic === tonic && String(k.tonicAlter) === alter);
+  if (!key) return null;
+
+  return { kind, key, octaves: count, motion, fingerings: fingerings === "true" };
+}
+
+function includes<T extends string>(list: readonly T[], value: string): value is T {
+  return (list as readonly string[]).includes(value);
 }

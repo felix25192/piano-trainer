@@ -107,3 +107,20 @@ export function stepsInMeasures(score: Score, from: number, to: number): ScoreSt
 export function lastMeasure(score: Score): number {
   return score.steps.reduce((max, s) => Math.max(max, s.measure), 0);
 }
+
+/**
+ * The measures that hold something to play for the chosen hands, in order.
+ *
+ * A piece can open with a bar of rests in one hand, and offering a jump to a
+ * measure that needs no input would land the position somewhere else without
+ * explanation. With one hand practised, that goes for the other hand's bars
+ * too. Held-over notes count, because jumping to a bar means entering it, and
+ * whoever enters in the middle of a tie strikes the note.
+ */
+export function playableMeasures(score: Score, hands: Hands): number[] {
+  const measures = new Set<number>();
+  for (const step of score.steps) {
+    if (demandedPitches(step, hands, true).length > 0) measures.add(step.measure);
+  }
+  return [...measures].sort((a, b) => a - b);
+}

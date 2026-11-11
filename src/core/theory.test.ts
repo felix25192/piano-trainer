@@ -4,6 +4,7 @@ import {
   keyOf,
   keySignatureAlterations,
   pitchToMidi,
+  sameKey,
   pitchToString,
   scaleDegrees,
   type Letter,
@@ -148,5 +149,13 @@ describe("black keys", () => {
     expect(isBlackKey({ step: "C", alter: -1, octave: 4 })).toBe(false); // = B
     expect(isBlackKey({ step: "B", alter: 1, octave: 4 })).toBe(false); // = C
     expect(isBlackKey({ step: "F", alter: -1, octave: 4 })).toBe(false); // = E
+  });
+});
+
+describe("sameKey", () => {
+  it("tells keys apart that sound alike but are written differently", () => {
+    expect(sameKey(keyOf("F", 1, "major"), keyOf("G", -1, "major"))).toBe(false);
+    expect(sameKey(keyOf("A", 0, "major"), keyOf("A", 0, "harmonicMinor"))).toBe(false);
+    expect(sameKey(keyOf("E", -1, "harmonicMinor"), keyOf("E", -1, "harmonicMinor"))).toBe(true);
   });
 });

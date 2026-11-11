@@ -204,18 +204,49 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
 }
 
 /**
- * A wrong note turns the highlight red.
+ * A wrong note turns the highlight red, hatches it, and nudges it once.
  *
  * The point is to say "that was you, not a hang" without saying which note was
  * expected — naming it would turn sight-reading practice into reading text.
+ *
+ * Red alone says nothing to someone who cannot tell it from green, which is
+ * about one man in twelve. The hatching is a shape instead of a colour and
+ * stays as long as the mistake does. The nudge is movement, which the eye
+ * catches from the side when it has already gone on to the next note.
+ *
  * OSMD draws the cursor as a generated green image, so the colour is rotated
- * rather than replaced.
+ * rather than replaced, and the hatching is a mask over that image. The nudge
+ * moves it with `translate`, which leaves alone the `transform` that stretches
+ * it. There are two identical animations under two names because a class that
+ * stays on never runs its animation again: the shell alternates them with
+ * every mistake, so a second wrong note nudges as well as the first.
  */
 .scroller.wrong img[id^="cursorImg"] {
   filter: hue-rotate(245deg) saturate(1.6);
+  -webkit-mask-image: repeating-linear-gradient(135deg, #000 0 6px, rgba(0, 0, 0, .3) 6px 10px);
+  mask-image: repeating-linear-gradient(135deg, #000 0 6px, rgba(0, 0, 0, .3) 6px 10px);
 }
 
-/* ---------- placeholder controls, until the piano drives this ---------- */
+.scroller.nudge-0 img[id^="cursorImg"] { animation: nudge-a 240ms ease-out; }
+.scroller.nudge-1 img[id^="cursorImg"] { animation: nudge-b 240ms ease-out; }
+
+@keyframes nudge-a {
+  0%, 100% { translate: 0; }
+  25% { translate: -5px 0; }
+  60% { translate: 4px 0; }
+}
+
+@keyframes nudge-b {
+  0%, 100% { translate: 0; }
+  25% { translate: -5px 0; }
+  60% { translate: 4px 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroller.wrong img[id^="cursorImg"] { animation: none; }
+}
+
+/* ---------- the bar under the score ---------- */
 
 .actions {
   display: flex;
@@ -237,18 +268,29 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
 .actions button:active { filter: brightness(1.4); }
 .actions button:disabled { opacity: .4; }
 
-.primary {
-  flex: 1;
-  background: var(--accent) !important;
-  color: #fff !important;
-}
-
 .secondary { width: var(--touch); flex: none; font-size: 18px !important; }
 
-/* Playing back, or listening: the same button stops what it started. */
-.actions .secondary.on {
+/* Playing back, listening, MIDI: the same button stops what it started. */
+.actions .on {
   background: var(--accent);
   color: #fff;
+}
+
+/* The instruments: named, and given whatever room the bar has. */
+.actions .input {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.actions .input span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .actions .glyph {
@@ -534,6 +576,17 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
 @media (max-width: 700px) {
   .protocol li { grid-template-columns: 4.5em 9em 1fr; }
   .protocol li span:nth-child(n + 4) { display: none; }
+}
+
+/* Not an error: something worth knowing, and what to do about it. */
+.notice {
+  margin: 0 8px 8px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .error-box {

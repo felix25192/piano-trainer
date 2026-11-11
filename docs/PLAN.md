@@ -1,6 +1,6 @@
 # Projektplan
 
-Stand: 10.11.2026
+Stand: 11.11.2026
 
 > **Wie diese Datei zu lesen ist:** Unten stehen die Abschnitte in der
 > Reihenfolge ihrer Entstehung, jeder datiert. Zum Einsteigen reicht dieser
@@ -28,7 +28,7 @@ Linie. Spike A ist in Safari auf dem iPad bestanden, gemessen und nicht
 vermutet.
 
 Veroeffentlicht unter <https://felix25192.github.io/piano-trainer/>, bei jedem
-Push auf `main` automatisch aktualisiert. 269 Tests.
+Push auf `main` automatisch aktualisiert. 282 Tests.
 
 **Seit dem 10.11. spielt auch ein MIDI-Keyboard die App**, beide Haende
 zugleich, am Rechner in Chrome und Edge. Am echten Kawai ist das noch nicht
@@ -1884,3 +1884,119 @@ C-Dur, beide Haende parallel:
 
 Am echten Kawai ist das ungeprueft. Dafuer gibt es jetzt Teil E der
 Testrunde, am Laptop und, ohne Geld, am iPad ueber den "Web MIDI Browser".
+
+## Aufgeraeumt vor dem Ausbau (11.11.2026)
+
+Schritt 3 aus dem Abschnitt vom 10.11. Drei Dinge, vorher abgestimmt und dann
+in einem Zug gebaut, mit der Liste unten als Probe.
+
+### Die Platzhalter sind weg
+
+Der groesste Knopf im Uebungsbild war "richtigen Ton spielen", ein Platzhalter
+aus der Zeit vor jedem Instrument. Jetzt haben **Mikrofon** und **MIDI** den
+Platz, beschriftet. Der Knopf mit dem Kreuz, der einen falschen Ton spielte,
+ist weg; er war nur ein Testwerkzeug.
+
+Geblieben ist ein kleiner Pfeil **weiter**, genau wie die Leertaste: zum
+Mitlesen ohne Instrument, die Noten im Kopf benennen und weiter. Er geht jetzt
+ueber einen ganzen Akkord auf einmal. Vorher brauchte ein Akkord beider Haende
+zwei Tipper, je einen fuer jeden Ton. Fuer einen Platzhalter war das egal, fuer
+das Mitlesen ist es falsch. Er nimmt denselben Weg wie jede Taste, durch den
+Matcher, und erfindet nichts dazu.
+
+### Ein Fehler zeigt sich nicht nur in Farbe
+
+Bisher wurde die Markierung bei einem Fehler nur von gruen nach rot gefaerbt.
+Wer Rot und Gruen nicht unterscheidet, etwa jeder zwoelfte Mann, sah davon
+nichts. Jetzt kommt zur Farbe zweierlei dazu:
+
+- **Eine Schraffur**, solange der Fehler steht. Sie ist eine Form statt einer
+  Farbe, eine Maske ueber dem Bild, das OSMD fuer die Markierung zeichnet.
+- **Ein kurzes Rucken** bei jedem falschen Ton. Bewegung faellt aus dem
+  Augenwinkel auf, wenn der Blick schon bei der naechsten Note ist. Wer in den
+  Systemeinstellungen weniger Bewegung verlangt, bekommt nur die Schraffur.
+
+Das Rucken laeuft ueber die CSS-Eigenschaft `translate` und nicht ueber
+`transform`, denn `transform` streckt die Markierung schon auf die Hoehe des
+Systems. Und weil eine Klasse, die stehen bleibt, ihre Animation nicht noch
+einmal abspielt, gibt es sie zweimal unter zwei Namen. Der Zaehler der Fehler
+wechselt mit jedem falschen Ton zwischen beiden, so ruckt auch der zweite
+falsche Ton in Folge.
+
+Die erwartete Note bleibt ungenannt, wie bisher.
+
+Nebenbei: Steht das Mikrofon an und "beide Haende" ist gewaehlt, sagt die App
+jetzt selbst, dass es eine Hand zur Zeit braucht. Vorher blieb die Markierung
+am ersten Akkord einfach stehen, und nur die Startkarte erklaerte warum.
+
+### App.tsx ist geteilt
+
+Von 1813 Zeilen auf 321. Die Datei verdrahtet jetzt nur noch.
+
+**Was entscheidet, ging nach `core` und hat Tests bekommen**, 13 neue:
+
+- `exerciseKey` und `parseExerciseKey`: wie eine Uebung als kurzer Text das
+  Neuladen ueberlebt. Gelesen wird jetzt streng: nur angebotene Tonarten, eine
+  bis vier Oktaven, bekannte Woerter. Vorher wurde ein fremder Schluessel aus
+  dem Speicher einfach durchgereicht. Schluessel aelterer Versionen oeffnen
+  dieselbe Uebung wie vorher, das prueft ein eigener Test.
+- `MAJOR_KEYS` und `MINOR_KEYS`, die angebotenen Tonarten im Quintenzirkel. Der
+  Test prueft, dass jede Molltonart neben ihrer Dur-Parallele steht, und nennt
+  die eine Ausnahme: neben Fis-Dur steht es-Moll, die Parallele von Ges-Dur. Das
+  strenge dis-Moll braeuchte als Leitton ein Cisis.
+- `playableMeasures`: welche Takte die Taktliste anbietet.
+- `keyLabel`: der Name einer Taste im Anschlagsprotokoll, bei einer schwarzen
+  beide ("C♯4/D♭4"), weil eine Frequenz keine Schreibweise kennt.
+- `sameKey`: Fis-Dur und Ges-Dur sind zwei Tonarten, auch wenn sie gleich
+  klingen.
+
+**Das OSMD-Wissen ging in den Adapter.** `CLAUDE.md` sagte schon lange,
+`osmdScore.ts` sei die einzige Datei, die OSMD von innen kennen darf. App.tsx
+hielt sich nicht daran: Cursor, Satzregeln, Scrollen. Jetzt gibt es dort die
+Klasse `ScoreView`: Stueck laden, Groesse anpassen, Markierung auf einen
+Schritt setzen. Wie sie dorthin kommt, weiss nur sie. Dabei wurden zwei
+Funktionen zu einer: vorwaerts von der aktuellen Stelle weitergehen, sonst von
+vorn. Vorher entschied jeder Aufrufer selbst, welche er braucht.
+
+**Der Rest ist in `src/shell/`**, nach Aufgaben: `useScoreView` (das Notenbild
+und die Stelle darin, also auch die Engine), `usePlayback`, `useInputs`
+(Mikrofon und MIDI, immer nur eins), `usePieces`, dazu die Leisten und die
+vier Panels als eigene Komponenten. Die Regeln, was zugleich laufen darf,
+stehen jeweils neben dem, was sie schuetzen.
+
+Eine Kleinigkeit, die der Linter dabei fand: Refs wurden waehrend des Renderns
+beschrieben. In App.tsx hatte er es nie gemeldet, in den Hooks schon. Die
+Werte werden jetzt in einem Effekt nachgefuehrt. Der Stand der Engine ist
+echter State statt eines Zaehlers, der nur ein Neuzeichnen erzwang.
+
+### Die Probe
+
+Im eingebauten Browser, mit nachgestelltem Kawai und, fuer das Mikrofon, einem
+stillen Audiostrom:
+
+- Startseite, Uebung erzeugen, Panel schliesst sich und die Uebung steht.
+- Weiter-Knopf und Leertaste: je ein ganzer Akkord.
+- MIDI: rechte Hand allein schiebt nicht, falscher Ton schraffiert und ruckt,
+  ein zweiter falscher ruckt erneut, der richtige raeumt beides weg.
+- Antippen setzt die Stelle, Wischen nicht.
+- Haende wechseln behaelt die Stelle, die Taktliste zeigt nur spielbare Takte,
+  der Sprung landet.
+- Vorspielen: die Markierung laeuft mit, Tasten werden waehrenddessen
+  ueberhoert, der zweite Druck haelt an, die Stelle bleibt.
+- Startseite und zurueck: die Karte bietet das Stueck an, die Stelle ist noch
+  da, MIDI noch an.
+- MIDI getrennt und wieder verbunden: der Hinweis kommt und geht.
+- Mikrofon an schaltet MIDI ab; bei "beide Haende" kommt der Hinweis, bei
+  einer Hand nicht. MIDI an schaltet das Mikrofon ab.
+- Einstellungen: von Hand groesser schaltet die Anpassung ab, wieder an passt
+  sie an. Fingersaetze aus erzeugt die Uebung neu. Das Protokoll erscheint.
+- Neu laden: die Uebung von vorher wird angeboten und oeffnet sich mit
+  Fingersaetzen.
+- Eigene Datei: hinzufuegen oeffnet sie, entfernen faellt auf das Menuett
+  zurueck.
+- Mondscheinsonate: die Markierung ist ueber die Hilfslinien gestreckt, der
+  Sprung in Takt 50 scrollt dorthin.
+- Keine Fehler in der Konsole. 282 Tests, Typen, Lint, Build.
+
+An der Audio-Sitzung hat sich nichts geaendert: `audioSession.ts` ist
+unberuehrt, und die Pruefung mit grep zeigt dieselben zwei erlaubten Treffer.

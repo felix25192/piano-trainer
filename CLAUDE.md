@@ -30,7 +30,11 @@ Ports and adapters. Dependencies point inward.
 src/core/       Pure TypeScript. No React, no DOM, no browser. Fully tested.
 src/adapters/   One external thing each. Deliberately thin — no decisions,
                 therefore almost no tests.
-src/App.tsx     The shell. Subscribes; does not think.
+src/shell/      The shell's parts: hooks that hold state (the score and the
+                place in it, playback, the instruments, the pieces) and the
+                components that draw them. Thin: what decides belongs in core.
+src/App.tsx     Wires the shell together. Decides nothing.
+src/pieces.ts   The bundled set, the piece from last time.
 src/Home.tsx    The start screen. Reports which mode was tapped; knows
                 nothing about OSMD, storage or the engine.
 ```
@@ -52,7 +56,8 @@ src/Home.tsx    The start screen. Reports which mode was tapped; knows
 - `core/hearing.ts` — **the microphone loop**: a frame of samples in, a
   struck note out. The bench, the tests and the app all run this one
 - `core/NoteOutput.ts` — **the port** every sound output implements
-- `adapters/osmdScore.ts` — the only file allowed to know OSMD's object graph
+- `adapters/osmdScore.ts` — the only file allowed to know OSMD's object graph:
+  `ScoreView` draws and moves the highlight, `extractScore` reads
 - `adapters/MidiInput.ts` — Web MIDI: exact, both hands. Chrome and Edge on
   the desktop; Safari has none, see the end of What is open
 - `adapters/MicInput.ts` — the microphone: strike, then pitch. Monophonic
@@ -78,7 +83,7 @@ export PATH="/c/Program Files/nodejs:$PATH"
 ```
 
 ```bash
-npx vitest run          # 269 tests
+npx vitest run          # 282 tests
 npx tsc -b --noEmit     # types
 npx oxlint              # lint; silence means clean
 npm run build
@@ -288,7 +293,11 @@ on again is picked up by itself. Verified in the app against a stand-in for
 Web MIDI, not yet against the Kawai.
 
 The expected notes are deliberately **not** displayed. Naming them turns the
-exercise into reading text. A wrong note turns the highlight red instead.
+exercise into reading text. A wrong note stops the highlight and marks it
+instead: red, hatched, and nudged once — the hatching and the nudge for
+whoever cannot tell red from green. A next button and the space bar move on
+without playing, for reading along away from the instrument; they pass a
+whole chord at once.
 Playing them back is the deliberate exception: it gives the ear something to
 aim at and still leaves the eyes the work of finding it on the page.
 

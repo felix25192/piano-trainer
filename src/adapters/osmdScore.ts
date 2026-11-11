@@ -1,16 +1,20 @@
-import type { OpenSheetMusicDisplay } from "opensheetmusicdisplay";
+import { OpenSheetMusicDisplay } from "opensheetmusicdisplay";
 import { pedalEndAt, pedalSpans, type PedalMark } from "../core/pedal";
 import { FALLBACK_BPM } from "../core/playback";
 import type { ExpectedNote, Score, ScoreStep } from "../core/score";
 
 /**
- * Translates what OpenSheetMusicDisplay parsed into the engine's own score
- * model, and records where each step sits along the staff line.
+ * Everything the app does with OpenSheetMusicDisplay.
+ *
+ * Two halves. `ScoreView` draws: the engraving as one line, sized to the
+ * screen, with the highlight on a given step. `extractScore` reads: it
+ * translates what OSMD parsed into the engine's own score model, and records
+ * where each step sits along the staff line.
  *
  * This is an adapter, and it is deliberately the only file in the project that
  * is allowed to know about OSMD's object graph. Keep it thin: it walks, it
- * copies, it makes no decisions. Everything worth testing lives in src/core,
- * which is why there is no test beside this file.
+ * copies, it measures, it makes no decisions. Everything worth testing lives
+ * in src/core, which is why only the one pure function here has a test.
  */
 
 /**
@@ -252,4 +256,272 @@ function staffOf(note: unknown): number {
   const id = (note as { ParentStaffEntry?: { ParentStaff?: { Id?: number } } })
     .ParentStaffEntry?.ParentStaff?.Id;
   return typeof id === "number" ? id : 1;
+}
+
+/* ---------------------------------------------------------------- drawing */
+
+/**
+ * The engraving on screen: OSMD drawing into a host element inside a
+ * horizontally scrolling viewport, with the highlight on one step.
+ *
+ * The shell says which piece, how large and which step. How OSMD gets there —
+ * its cursor, its engraving rules, its render passes — stays in here.
+ */
+export class ScoreView {
+  private readonly osmd: OpenSheetMusicDisplay;
+  private readonly host: HTMLElement;
+  private readonly viewport: HTMLElement;
+  private anchors: number[] = [];
+  /** Where OSMD's own cursor stands, so it can be walked rather than rebuilt. */
+  private cursorAt = 0;
+  /**
+   * True after a render. OSMD rebuilds the cursor element on every render, so
+   * the next move walks from the start and stretches it again.
+   */
+  private stale = true;
+  /** Guards against a resize arriving while a fit is still rendering. */
+  private fitting = false;
+  private disposed = false;
+
+  constructor(host: HTMLElement, viewport: HTMLElement) {
+    this.host = host;
+    this.viewport = viewport;
+    host.innerHTML = "";
+    this.osmd = new OpenSheetMusicDisplay(host, {
+      autoResize: false, // re-rendered from outside, through the fit
+      backend: "svg",
+      drawTitle: false,
+      drawComposer: false,
+      followCursor: false,
+      // Default spacing assumes a printed page and wastes most of a phone
+      // screen on margins between the staves.
+      drawingParameters: "compacttight",
+    });
+    tightenForScreen(this.osmd);
+  }
+
+  /**
+   * Parses and draws a piece, and reads it into the engine's model.
+   *
+   * Resolves to null when the view was disposed while the file was still
+   * being parsed. Drawing then would put the old piece into a host that a new
+   * view has already taken over.
+   */
+  async load(content: string | Blob, title: string, zoom: number): Promise<Score | null> {
+    await this.osmd.load(content, title);
+    if (this.disposed) return null;
+
+    this.osmd.zoom = zoom;
+    this.render();
+    this.osmd.cursor.show();
+
+    const { score, anchors } = extractScore(this.osmd, title, this.host);
+    this.anchors = anchors;
+    this.cursorAt = 0;
+    return score;
+  }
+
+  get zoom(): number {
+    return this.osmd.zoom;
+  }
+
+  /** Draws again at another size. Reports whether anything changed. */
+  setZoom(zoom: number): boolean {
+    if (this.fitting || Math.abs(this.osmd.zoom - zoom) < 0.001) return false;
+    this.osmd.zoom = zoom;
+    this.render();
+    return true;
+  }
+
+  /**
+   * Scales the engraving until one system fills the viewport's height, within
+   * the bounds given, and returns the zoom it settled on.
+   *
+   * OSMD engraves for a printed page and has no notion of a viewport, so the
+   * only way to find the right zoom is to render, measure what came out, and
+   * correct. Fixed margins mean one pass undershoots, hence the loop — it
+   * converges in two or three.
+   */
+  fitHeight(min: number, max: number): number {
+    if (this.fitting) return this.osmd.zoom;
+    this.fitting = true;
+    try {
+      for (let pass = 0; pass < 4; pass++) {
+        const svg = this.host.querySelector("svg");
+        const available = this.viewport.clientHeight;
+        if (!svg || available <= 0) break;
+
+        const rendered = svg.getBoundingClientRect().height;
+        if (rendered <= 0) break;
+
+        const factor = available / rendered;
+        if (Math.abs(factor - 1) < 0.04) break;
+
+        const next = clamp(this.osmd.zoom * factor, min, max);
+        if (Math.abs(next - this.osmd.zoom) < 0.02) break;
+
+        this.osmd.zoom = next;
+        this.render();
+      }
+    } finally {
+      this.fitting = false;
+    }
+    return this.osmd.zoom;
+  }
+
+  /**
+   * Puts the highlight on a step and scrolls it into view.
+   *
+   * Forward only, from wherever the cursor already stands, whenever it can:
+   * during playback the highlight moves on every note, and walking from the
+   * start each time would turn a Mozart movement of two thousand steps into
+   * two million. Backwards, or after a render rebuilt the cursor, it starts
+   * over — and that is also the moment the stretch has to be put back.
+   */
+  show(step: number, behavior: ScrollBehavior): void {
+    const cursor = this.osmd.cursor;
+    const restart = this.stale || step < this.cursorAt;
+
+    if (restart) {
+      cursor.show();
+      cursor.reset();
+      this.cursorAt = 0;
+    }
+
+    let guard = 0;
+    while (this.cursorAt < step && guard++ < MAX_STEPS) {
+      cursor.next();
+      this.cursorAt++;
+    }
+
+    if (restart) {
+      stretchCursor(this.host);
+      this.stale = false;
+    }
+    scrollIntoView(cursorElement(cursor), this.viewport, behavior);
+  }
+
+  /** The step nearest a point on screen, for a tap; null before anything is drawn. */
+  stepAt(clientX: number): number | null {
+    const svg = this.host.querySelector("svg");
+    if (!svg) return null;
+    const box = svg.getBoundingClientRect();
+    if (box.width <= 0) return null;
+    return stepAtFraction(this.anchors, (clientX - box.left) / box.width);
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    try {
+      this.osmd.clear();
+    } catch {
+      // Torn down before the load finished — nothing to free.
+    }
+  }
+
+  private render(): void {
+    this.osmd.render();
+    this.stale = true;
+  }
+}
+
+/**
+ * Strips the page-layout assumptions out of the engraving.
+ *
+ * OSMD lays music out for print: margins for a sheet of paper, room above the
+ * first system for the tempo marking. On a screen that space is pure loss, and
+ * it costs more than it looks — the system height is uniform across the whole
+ * piece, so one "Allegro" in bar 1 drags an empty band along for all 518 steps
+ * and shrinks every note to make room for it.
+ */
+function tightenForScreen(osmd: OpenSheetMusicDisplay): void {
+  const rules = osmd.EngravingRules;
+
+  // The whole piece as one continuous line to scroll sideways.
+  rules.RenderSingleHorizontalStaffline = true;
+
+  // Tempo wording ("Allegro") and the metronome mark. Both sit in a band above
+  // the first system that every later system then inherits. The instrument
+  // sets the pace here anyway, not the score.
+  rules.RenderFirstTempoExpression = false;
+  rules.MetronomeMarksDrawn = false;
+
+  // Paper margins.
+  rules.PageTopMargin = 0;
+  rules.PageBottomMargin = 0;
+  rules.PageLeftMargin = 0;
+  rules.PageRightMargin = 0;
+}
+
+/**
+ * Stretches the cursor highlight to span the whole system.
+ *
+ * OSMD sizes it to the stave lines alone, so a note on a ledger line — the
+ * opening bass octave of the Moonlight Sonata, for one — sits outside the
+ * highlight and looks cut off. A fixed factor cannot fix that, because how far
+ * notes reach past the lines differs from piece to piece.
+ *
+ * So the size is measured instead: with the transform cleared, the element
+ * reports its natural height, and from that comes the factor that makes it
+ * cover the engraving from top to bottom. Scaling from the centre keeps the
+ * overhang even above and below.
+ *
+ * `transform` is the right property for this because OSMD rewrites the inline
+ * `top` and `left` on every cursor move but never touches it. The nudge after a
+ * wrong note uses `translate`, a property of its own that adds to it.
+ */
+function stretchCursor(host: HTMLElement): void {
+  const svg = host.querySelector("svg");
+  const cursor = host.querySelector<HTMLElement>('img[id^="cursorImg"]');
+  if (!svg || !cursor) return;
+
+  cursor.style.transform = "none";
+
+  const sheet = svg.getBoundingClientRect();
+  const bar = cursor.getBoundingClientRect();
+  if (bar.height <= 0 || sheet.height <= 0) return;
+
+  const centre = bar.top + bar.height / 2 - sheet.top;
+  // From the centre, reach whichever edge of the system is further away.
+  const reach = Math.max(centre, sheet.height - centre);
+  const scale = clamp((reach * 2) / bar.height, 1, 4);
+
+  cursor.style.transform = `scaleY(${scale.toFixed(3)})`;
+}
+
+function scrollIntoView(
+  el: HTMLElement | undefined,
+  viewport: HTMLElement,
+  behavior: ScrollBehavior,
+): void {
+  if (!el) return;
+
+  /*
+   * Read the position OSMD just wrote, not the one on screen.
+   *
+   * The highlight glides to its new place over 120ms, so measuring it now
+   * reports where it is coming FROM. Forwards that barely shows, because the
+   * old position lies left of the new one and the view ends up slightly short.
+   * Backwards it is glaring: the old position lies to the RIGHT, so jumping
+   * back scrolled forward.
+   *
+   * The inline `left` is the target, set synchronously and untouched by the
+   * transition. It is measured from the OSMD container, which is the scroll
+   * content itself, so it compares directly with scrollLeft.
+   */
+  const styled = Number.parseFloat(el.style.left);
+  const left = Number.isFinite(styled)
+    ? styled
+    : el.getBoundingClientRect().left -
+      viewport.getBoundingClientRect().left +
+      viewport.scrollLeft;
+
+  const centre = left + el.offsetWidth / 2;
+  const target = centre - viewport.clientWidth / 3;
+
+  viewport.scrollTo({ left: Math.max(0, target), behavior });
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v));
 }

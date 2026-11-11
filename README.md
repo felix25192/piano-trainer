@@ -18,8 +18,10 @@ No accounts, no gamification, no pressure.
 
 - **One continuous line of music**, both clefs, correct accidentals, sized to
   the screen on every rotation. Tap the score to start anywhere, or pick a bar.
-- **The right note moves it on, a wrong one turns it red.** The expected notes
-  are never named: that would turn reading notation into reading text.
+- **The right note moves it on, a wrong one stops it** and marks the highlight
+  red, hatched, with a short nudge — so it reads without telling red from
+  green. The expected notes are never named: that would turn reading notation
+  into reading text.
 - **Unfamiliar material**, because a piece you know by ear lets memory do the
   reading. Seven graded public-domain pieces, from a Bach minuet to the
   Moonlight Sonata, and any MusicXML file of your own, kept on the device.
@@ -87,7 +89,8 @@ src/core/       Pure TypeScript: theory, scores, the matching engine, pitch
                 and onset detection. No React, no DOM, no browser. Tested.
 src/adapters/   One external thing each: OSMD, Web Audio, the microphone,
                 Web MIDI, IndexedDB. Deliberately thin.
-src/App.tsx     The shell. Subscribes; does not think.
+src/shell/      Hooks that hold state and components that draw it.
+src/App.tsx     Wires them together. Decides nothing.
 ```
 
 Every input implements one port, `NoteInputSource`, so the engine cannot tell

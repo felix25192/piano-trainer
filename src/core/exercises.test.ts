@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { buildExercise, keyName, type ExerciseOptions } from "./exercises";
+import {
+  buildExercise,
+  exerciseKey,
+  keyName,
+  MAJOR_KEYS,
+  MINOR_KEYS,
+  parseExerciseKey,
+  type ExerciseOptions,
+} from "./exercises";
 import { keyOf, pitchToMidi, pitchToString } from "./theory";
 
 function options(over: Partial<ExerciseOptions> = {}): ExerciseOptions {
@@ -185,5 +193,78 @@ describe("titles", () => {
     expect(buildExercise(options({ motion: "contrary" })).title).toBe(
       "Tonleiter C-Dur · 1 Oktave · Gegenbewegung",
     );
+  });
+});
+
+describe("offered keys", () => {
+  it("runs round the circle of fifths, each signature once", () => {
+    expect(MAJOR_KEYS.map(keyName).join(" ")).toBe(
+      "C-Dur G-Dur D-Dur A-Dur E-Dur H-Dur Fis-Dur Des-Dur As-Dur Es-Dur B-Dur F-Dur",
+    );
+    const signatures = MAJOR_KEYS.map((k) => ((k.fifths % 12) + 12) % 12);
+    expect(new Set(signatures).size).toBe(12);
+  });
+
+  it("puts each minor key beside its relative major", () => {
+    expect(MINOR_KEYS.map(keyName).join(" ")).toBe(
+      "a-Moll e-Moll h-Moll fis-Moll cis-Moll gis-Moll es-Moll b-Moll f-Moll c-Moll g-Moll d-Moll",
+    );
+    // Relative keys share their signature.
+    MAJOR_KEYS.forEach((major, i) => {
+      if (keyName(major) === "Fis-Dur") return;
+      expect(MINOR_KEYS[i].fifths).toBe(major.fifths);
+    });
+  });
+
+  it("takes the one enharmonic step where the strict answer needs a double sharp", () => {
+    // F sharp major has six sharps; beside it stands E flat minor with six
+    // flats, the relative of G flat major — the same keys on the keyboard.
+    const i = MAJOR_KEYS.findIndex((k) => keyName(k) === "Fis-Dur");
+    expect(MAJOR_KEYS[i].fifths).toBe(6);
+    expect(keyName(MINOR_KEYS[i])).toBe("es-Moll");
+    expect(MINOR_KEYS[i].fifths).toBe(-6);
+  });
+});
+
+describe("exercise keys", () => {
+  it("reads back every exercise the builder can be asked for", () => {
+    for (const key of [...MAJOR_KEYS, ...MINOR_KEYS]) {
+      for (const kind of ["scale", "arpeggio", "fiveFinger"] as const) {
+        for (const motion of ["parallel", "contrary"] as const) {
+          for (const octaves of [1, 2, 3, 4]) {
+            for (const fingerings of [true, false]) {
+              const o: ExerciseOptions = { kind, key, octaves, motion, fingerings };
+              expect(parseExerciseKey(exerciseKey(o))).toEqual(o);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it("still opens keys that earlier versions saved", () => {
+    const parsed = parseExerciseKey("ex:scale:C:0:major:2:parallel:true");
+    expect(parsed && buildExercise(parsed).title).toBe(buildExercise(options({ octaves: 2 })).title);
+
+    const minor = parseExerciseKey("ex:arpeggio:F:1:harmonicMinor:1:contrary:false");
+    expect(minor && keyName(minor.key)).toBe("fis-Moll");
+    expect(minor?.fingerings).toBe(false);
+  });
+
+  it("refuses anything that is not an offered exercise rather than guessing", () => {
+    for (const text of [
+      "bach-minuet",
+      "lib:3f2a",
+      "ex:scale:C:0:major:2:parallel",
+      "ex:scale:H:0:major:2:parallel:true",
+      "ex:scale:D:1:major:2:parallel:true", // D sharp major is not offered
+      "ex:scale:C:0:major:5:parallel:true",
+      "ex:scale:C:0:major:1.5:parallel:true",
+      "ex:glissando:C:0:major:2:parallel:true",
+      "ex:scale:C:0:dorian:2:parallel:true",
+      "ex:scale:C:0:major:2:parallel:yes",
+    ]) {
+      expect(parseExerciseKey(text), text).toBeNull();
+    }
   });
 });

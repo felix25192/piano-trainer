@@ -147,3 +147,13 @@ function majorFifths(tonic: Letter, tonicAlter: number): number {
   // Each sharp on the tonic moves the key seven steps round the circle.
   return natural[tonic] + tonicAlter * 7;
 }
+
+/**
+ * Two keys are the same when tonic, accidental and mode all match.
+ *
+ * Sounding alike is not enough: F sharp major and G flat major share every
+ * key on the keyboard and are still two keys, written differently.
+ */
+export function sameKey(a: Key, b: Key): boolean {
+  return a.tonic === b.tonic && a.tonicAlter === b.tonicAlter && a.mode === b.mode;
+}

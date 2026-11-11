@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   frequencyToMidi,
   isOnPiano,
+  keyLabel,
   midiToFrequency,
   midiToName,
   nameToMidi,
@@ -113,5 +114,17 @@ describe("frequency conversion", () => {
   it("rejects a frequency of zero or below", () => {
     expect(() => frequencyToMidi(0)).toThrow(RangeError);
     expect(() => frequencyToMidi(-100)).toThrow(RangeError);
+  });
+});
+
+describe("keyLabel", () => {
+  it("names a white key once", () => {
+    expect(keyLabel(60)).toBe("C4");
+    expect(keyLabel(21)).toBe("A0");
+  });
+
+  it("gives a black key both names, since a frequency carries no spelling", () => {
+    expect(keyLabel(61)).toBe("C♯4/D♭4");
+    expect(keyLabel(70)).toBe("A♯4/B♭4");
   });
 });
