@@ -96,11 +96,50 @@ export function demandedPitches(step: ScoreStep, hands: Hands = "both", entering
   return [...new Set(struck.map((n) => n.midi))].sort((a, b) => a - b);
 }
 
-/** Steps belonging to a measure range, inclusive. Used for section practice. */
-export function stepsInMeasures(score: Score, from: number, to: number): ScoreStep[] {
+/** A stretch of steps, both ends included. */
+export interface StepRange {
+  start: number;
+  end: number;
+}
+
+/**
+ * The steps a loop over a span of bars runs through.
+ *
+ * Steps follow the route a performer takes, repeats included, so a bar can
+ * come round more than once, and simply collecting every step inside the span
+ * would stitch passes together. A loop is one stretch of the route instead:
+ * it begins where a pass through the first bar begins, stays inside the span,
+ * stops before the next pass through the first bar, and ends with the last
+ * step of the last bar it met. Of those stretches it takes the first that
+ * reaches the last bar at all.
+ *
+ * That is what a pianist means by "bars 3 to 6". If bar 4 sends the music
+ * back to bar 1, the first pass through bar 3 leaves the span without
+ * reaching bar 6, and the second pass is the loop. If bars 2 and 3 are
+ * repeated inside the span, the repeat belongs to the loop. And if the first
+ * bar of the span is itself repeated, the loop is one pass, not both, so the
+ * bar never comes twice in a row where the loop goes back.
+ *
+ * Null when the first bar has no step, or no pass reaches the last.
+ */
+export function loopSteps(score: Score, from: number, to: number): StepRange | null {
   const lo = Math.min(from, to);
   const hi = Math.max(from, to);
-  return score.steps.filter((s) => s.measure >= lo && s.measure <= hi);
+  const steps = score.steps;
+  const inSpan = (i: number) => steps[i].measure >= lo && steps[i].measure <= hi;
+  const passBegins = (i: number) => steps[i].measure === lo && (i === 0 || steps[i - 1].measure !== lo);
+
+  for (let start = 0; start < steps.length; start++) {
+    if (!passBegins(start)) continue;
+
+    let end = -1;
+    for (let i = start; i < steps.length && inSpan(i); i++) {
+      if (i > start && passBegins(i)) break;
+      if (steps[i].measure === hi) end = i;
+    }
+    if (end !== -1) return { start, end };
+  }
+  return null;
 }
 
 /** Highest measure number in the score, or 0 when it is empty. */

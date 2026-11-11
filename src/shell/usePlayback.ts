@@ -60,8 +60,15 @@ interface Options {
   tempoFactor: number;
   /** Where the engine stands. A passage plays from there. */
   from: () => number;
+  /** The last step to play — the end of a loop — or null for the end of the piece. */
+  until: () => number | null;
   /** Called as the sound reaches each step, so the highlight can keep up. */
   onReach: (step: number) => void;
+  /**
+   * Called when a passage has played out by itself, not when it was stopped.
+   * `atUntil` says whether it ended at the step `until` named.
+   */
+  onEnd: (atUntil: boolean) => void;
 }
 
 /**
@@ -71,7 +78,7 @@ interface Options {
  * listening to a passage leaves you ready to play the next one — rather than
  * somewhere a separate playback marker happened to stop.
  */
-export function usePlayback({ score, tempoFactor, from, onReach }: Options) {
+export function usePlayback({ score, tempoFactor, from, until, onReach, onEnd }: Options) {
   /** The sound output, built on the first tap of play and kept afterwards. */
   const outputRef = useRef<NoteOutput | null>(null);
   /** What is currently being played back. Set from the press until the stop. */
@@ -80,9 +87,13 @@ export function usePlayback({ score, tempoFactor, from, onReach }: Options) {
   const followRef = useRef<ReturnType<typeof setInterval> | null>(null);
   /** Wall clock at the start, to notice an audio clock that stops. */
   const startedWallRef = useRef(0);
+  /** Whether the passage playing now stops at `until` rather than the end. */
+  const cutRef = useRef(false);
   const onReachRef = useRef(onReach);
+  const onEndRef = useRef(onEnd);
   useEffect(() => {
     onReachRef.current = onReach;
+    onEndRef.current = onEnd;
   });
 
   const [state, setState] = useState<PlaybackState>("idle");
@@ -137,7 +148,10 @@ export function usePlayback({ score, tempoFactor, from, onReach }: Options) {
     const due = stepAtTime(schedule, elapsed);
     if (due !== null) onReachRef.current(due);
 
-    if (elapsed >= schedule.duration + PLAYBACK_TAIL_SECONDS) stop();
+    if (elapsed >= schedule.duration + PLAYBACK_TAIL_SECONDS) {
+      stop();
+      onEndRef.current(cutRef.current);
+    }
   }, [stop]);
 
   async function toggle() {
@@ -147,8 +161,10 @@ export function usePlayback({ score, tempoFactor, from, onReach }: Options) {
     }
     if (!score) return;
 
-    const schedule = buildSchedule(score, from(), tempoFactor);
+    const last = until();
+    const schedule = buildSchedule(score, from(), tempoFactor, last);
     if (schedule.notes.length === 0) return;
+    cutRef.current = last !== null;
 
     // Built on the first press rather than on mount: a browser hands out sound
     // only from inside a gesture, and iOS is strict about it.

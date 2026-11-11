@@ -30,6 +30,9 @@ No accounts, no gamification, no pressure.
   contrary motion, with fingerings for major.
 - **Hands separately or together.** A tied note is asked for once, where it is
   struck.
+- **Loop a few bars** until they read: the bars are tinted, and past the last
+  note the highlight goes back to the first. Repeats in the score are followed
+  the way a pianist would.
 - **Hear a passage first**, played back from the highlight at the written
   tempo, 75 % or half, with recordings of a real grand piano and the damper
   pedal where the score writes it.

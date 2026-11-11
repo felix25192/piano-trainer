@@ -12,6 +12,8 @@ interface Props {
   pieceLabel: string;
   /** The measure the highlight stands in, or null when there is none. */
   measure: number | null;
+  /** The bars being looped, if any. */
+  loop: { from: number; to: number } | null;
   hands: Hands;
   /** Whether a score is loaded and can be navigated. */
   ready: boolean;
@@ -26,7 +28,7 @@ interface Props {
 
 /** Piece, measure and hands: what you change while practising, one tap away. */
 export function TopBar(props: Props) {
-  const { pieceLabel, measure, hands, ready, status } = props;
+  const { pieceLabel, measure, loop, hands, ready, status } = props;
 
   return (
     <header className="topbar">
@@ -43,6 +45,17 @@ export function TopBar(props: Props) {
         Takt {measure ?? "—"}
         <span className="caret">▾</span>
       </button>
+
+      {/* While a loop is set it says so here, and a tap leads to where it is changed. */}
+      {loop && (
+        <button
+          className="loop"
+          onClick={props.onMeasures}
+          aria-label={`Schleife über Takt ${loop.from} bis ${loop.to}, tippen zum Ändern`}
+        >
+          ↻ {loop.from === loop.to ? loop.from : `${loop.from}–${loop.to}`}
+        </button>
+      )}
 
       {/*
         One tap cycles through the three. Hands separately gets switched back

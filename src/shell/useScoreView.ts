@@ -36,6 +36,8 @@ export type LoadStatus = "lädt" | "bereit" | "fehlgeschlagen";
 export interface Resume {
   key: string;
   step: number;
+  /** The bars being looped, which come back with the place. */
+  loop: { from: number; to: number } | null;
 }
 
 interface Options {
@@ -155,10 +157,14 @@ export function useScoreView({ selection, active, zoom, autoFit, onFit, resume }
 
         const matcher = new NoteMatcher(loaded, { hands: handsRef.current });
 
-        // Same piece as before the home screen: carry on where it stood.
+        // Same piece as before the home screen: carry on where it stood, in
+        // the same loop. The loop first, since setting one moves to its start.
         const back = resume.current;
         resume.current = null;
-        if (back && back.key === selection.key) matcher.seekToStep(back.step);
+        if (back && back.key === selection.key) {
+          if (back.loop) matcher.setLoop(back.loop.from, back.loop.to);
+          matcher.seekToStep(back.step);
+        }
 
         matcherRef.current = matcher;
         setScore(loaded);
@@ -186,6 +192,16 @@ export function useScoreView({ selection, active, zoom, autoFit, onFit, resume }
     if (!score || autoFit) return;
     if (viewRef.current?.setZoom(zoom)) showHere("auto");
   }, [zoom, score, autoFit, showHere]);
+
+  // The tint over the looped bars follows the loop, and comes back with a
+  // new view after a load.
+  const loopFrom = progress?.loop?.from ?? null;
+  const loopTo = progress?.loop?.to ?? null;
+  useEffect(() => {
+    if (!score) return;
+    const bars = loopFrom !== null && loopTo !== null ? { from: loopFrom, to: loopTo } : null;
+    viewRef.current?.markLoop(bars);
+  }, [loopFrom, loopTo, score]);
 
   // Fit again when the viewport changes — rotating the device is the main case.
   useEffect(() => {
@@ -287,6 +303,39 @@ export function useScoreView({ selection, active, zoom, autoFit, onFit, resume }
     [showHere, sync],
   );
 
+  /** Repeats a span of bars and goes to its start. False when the span holds nothing. */
+  const setLoop = useCallback(
+    (from: number, to: number): boolean => {
+      if (!matcherRef.current?.setLoop(from, to)) return false;
+      showHere("smooth");
+      sync();
+      return true;
+    },
+    [showHere, sync],
+  );
+
+  /** Lets the piece run on again, keeping the place. */
+  const clearLoop = useCallback(() => {
+    matcherRef.current?.clearLoop();
+    sync();
+  }, [sync]);
+
+  /**
+   * Back to the start of the loop, if there is one. Where a passage played to
+   * the end of the loop leaves you, so that what was just heard is what comes
+   * next.
+   */
+  const toLoopStart = useCallback(() => {
+    const matcher = matcherRef.current;
+    if (!matcher?.progress.loop) return;
+    matcher.reset();
+    showHere("smooth");
+    sync();
+  }, [showHere, sync]);
+
+  /** Where a passage played back from here stops; null for the end of the piece. */
+  const passageEnd = useCallback(() => matcherRef.current?.passageEnd ?? null, []);
+
   /** What the engine waits for now — for the strike protocol, never for display. */
   const remaining = useCallback(() => matcherRef.current?.remaining ?? [], []);
 
@@ -309,5 +358,9 @@ export function useScoreView({ selection, active, zoom, autoFit, onFit, resume }
     seekToMeasure,
     reset,
     changeHands,
+    setLoop,
+    clearLoop,
+    toLoopStart,
+    passageEnd,
   };
 }

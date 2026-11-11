@@ -461,3 +461,130 @@ describe("one hand at a time", () => {
     expect(matcher.currentStep?.index).toBe(2);
   });
 });
+
+/*
+ * A loop repeats a span of bars. Whatever happens inside it is the ordinary
+ * matching above; what is tested here is only where the position goes at the
+ * edges.
+ */
+describe("loops", () => {
+  // Four bars of two notes each: C D | E F | G A | B C.
+  const fourBars = () =>
+    scoreOf(
+      step(0, 1, 60), step(1, 1, 62),
+      step(2, 2, 64), step(3, 2, 65),
+      step(4, 3, 67), step(5, 3, 69),
+      step(6, 4, 71), step(7, 4, 72),
+    );
+
+  it("starts at the first bar of the span", () => {
+    const matcher = new NoteMatcher(fourBars());
+    expect(matcher.setLoop(2, 3)).toBe(true);
+    expect(matcher.currentStep?.index).toBe(2);
+    expect(matcher.progress.loop).toMatchObject({ from: 2, to: 3, start: 2, end: 5 });
+  });
+
+  it("goes back to the start after the last note of the span", () => {
+    const matcher = new NoteMatcher(fourBars());
+    matcher.setLoop(2, 3);
+    for (const midi of [64, 65, 67]) matcher.noteOn(played(midi));
+    expect(matcher.noteOn(played(69))).toMatchObject({ kind: "advanced", looped: true });
+    expect(matcher.currentStep?.index).toBe(2);
+    expect(matcher.finished).toBe(false);
+  });
+
+  it("never finishes while the loop reaches the last bar", () => {
+    const matcher = new NoteMatcher(fourBars());
+    matcher.setLoop(4, 4);
+    matcher.noteOn(played(71));
+    matcher.noteOn(played(72));
+    expect(matcher.finished).toBe(false);
+    expect(matcher.currentStep?.index).toBe(6);
+  });
+
+  it("goes back past rests at the end of the span", () => {
+    const score = scoreOf(step(0, 1, 60), step(1, 1), step(2, 2, 64));
+    const matcher = new NoteMatcher(score);
+    matcher.setLoop(1, 1);
+    expect(matcher.noteOn(played(60))).toMatchObject({ looped: true });
+    expect(matcher.currentStep?.index).toBe(0);
+  });
+
+  it("asks again for a tied note at the start of the loop, since nothing sounds there yet", () => {
+    const score = scoreOf(
+      stepWith(0, 1, [note(60)]),
+      stepWith(1, 2, [note(60, 1, true)]), // held over the bar line
+      stepWith(2, 2, [note(62)]),
+    );
+    const matcher = new NoteMatcher(score);
+    matcher.setLoop(2, 2);
+    expect(matcher.remaining).toEqual([60]);
+    matcher.noteOn(played(60));
+    matcher.noteOn(played(62));
+    expect(matcher.remaining).toEqual([60]);
+  });
+
+  it("restarts at the loop rather than the piece", () => {
+    const matcher = new NoteMatcher(fourBars());
+    matcher.setLoop(3, 4);
+    matcher.noteOn(played(67));
+    matcher.reset();
+    expect(matcher.currentStep?.index).toBe(4);
+  });
+
+  it("lets a position put after the loop carry on", () => {
+    const matcher = new NoteMatcher(fourBars());
+    matcher.setLoop(1, 2);
+    matcher.seekToMeasure(4);
+    matcher.noteOn(played(71));
+    matcher.noteOn(played(72));
+    expect(matcher.finished).toBe(true);
+  });
+
+  it("runs into the loop from before it, and then keeps to it", () => {
+    const matcher = new NoteMatcher(fourBars());
+    matcher.setLoop(2, 2);
+    matcher.seekToStep(0);
+    for (const midi of [60, 62, 64]) matcher.noteOn(played(midi));
+    expect(matcher.noteOn(played(65))).toMatchObject({ looped: true });
+    expect(matcher.currentStep?.index).toBe(2);
+  });
+
+  it("runs on past the end once the loop is cleared, keeping the place", () => {
+    const matcher = new NoteMatcher(fourBars());
+    matcher.setLoop(1, 1);
+    matcher.noteOn(played(60));
+    matcher.clearLoop();
+    expect(matcher.currentStep?.index).toBe(1);
+    matcher.noteOn(played(62));
+    expect(matcher.currentStep?.index).toBe(2);
+    expect(matcher.progress.loop).toBeNull();
+  });
+
+  it("refuses a span with nothing in it and changes nothing", () => {
+    const matcher = new NoteMatcher(fourBars());
+    matcher.noteOn(played(60));
+    expect(matcher.setLoop(7, 9)).toBe(false);
+    expect(matcher.currentStep?.index).toBe(1);
+    expect(matcher.progress.loop).toBeNull();
+  });
+
+  it("keeps the loop when the hands change", () => {
+    const matcher = new NoteMatcher(fourBars());
+    matcher.setLoop(2, 3);
+    matcher.setHands("right");
+    expect(matcher.progress.loop).toMatchObject({ from: 2, to: 3 });
+  });
+
+  it("plays a passage back to the loop's end from inside or before it, and to the piece's end after it", () => {
+    const matcher = new NoteMatcher(fourBars());
+    expect(matcher.passageEnd).toBeNull();
+
+    matcher.setLoop(2, 3);
+    expect(matcher.passageEnd).toBe(5);
+    matcher.seekToStep(0);
+    expect(matcher.passageEnd).toBe(5);
+    matcher.seekToStep(6);
+    expect(matcher.passageEnd).toBeNull();
+  });
+});

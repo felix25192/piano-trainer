@@ -58,7 +58,8 @@ export const FALLBACK_BPM = 90;
 const MIN_SECONDS = 0.05;
 
 /**
- * Builds the plan for everything from `fromStep` to the end of the piece.
+ * Builds the plan for everything from `fromStep` to `lastStep`, or to the end
+ * of the piece when no last step is given.
  *
  * `tempoFactor` scales the speed: 1 plays what is written, 0.5 half as fast.
  * It is applied to the finished times rather than to the tempo, so a tempo
@@ -68,12 +69,14 @@ export function buildSchedule(
   score: Score,
   fromStep: number,
   tempoFactor = 1,
+  lastStep: number | null = null,
 ): Schedule {
   const steps = score.steps;
   const factor = tempoFactor > 0 ? tempoFactor : 1;
   const first = clampIndex(fromStep, steps.length);
+  const last = lastStep === null ? steps.length - 1 : Math.min(lastStep, steps.length - 1);
 
-  if (first >= steps.length) return { notes: [], steps: [], duration: 0 };
+  if (first >= steps.length || last < first) return { notes: [], steps: [], duration: 0 };
 
   // Seconds from the start of the piece, for every step. Built once and read
   // repeatedly below, including for positions that fall between two steps.
@@ -85,10 +88,12 @@ export function buildSchedule(
   let duration = 0;
 
   // A pedal the score never lifts would otherwise run to infinity, and with it
-  // the length of the whole playback.
-  const lastOnset = steps[steps.length - 1].onset;
+  // the length of the whole playback. A passage that stops before the end
+  // lifts it where the next step would have begun: the pedal belongs to the
+  // music that is heard, not to what comes after.
+  const lastOnset = steps[Math.min(last + 1, steps.length - 1)].onset;
 
-  for (let i = first; i < steps.length; i++) {
+  for (let i = first; i <= last; i++) {
     const step = steps[i];
     const start = (elapsed[i] - origin) / factor;
     scheduled.push({ index: i, at: start });

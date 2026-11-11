@@ -282,6 +282,9 @@ export class ScoreView {
   /** Guards against a resize arriving while a fit is still rendering. */
   private fitting = false;
   private disposed = false;
+  /** The bars of the loop, if one is set, and the element that tints them. */
+  private loopBars: { from: number; to: number } | null = null;
+  private band: HTMLElement | null = null;
 
   constructor(host: HTMLElement, viewport: HTMLElement) {
     this.host = host;
@@ -401,6 +404,19 @@ export class ScoreView {
     scrollIntoView(cursorElement(cursor), this.viewport, behavior);
   }
 
+  /**
+   * Tints the bars of a loop, from bar line to bar line, or takes the tint
+   * away when given null.
+   *
+   * The edges come from OSMD's own layout of each bar rather than from the
+   * notes, so they sit on the bar lines: measured against the drawn lines of
+   * the minuet, within 0.8 px, which is the width of the line itself.
+   */
+  markLoop(bars: { from: number; to: number } | null): void {
+    this.loopBars = bars;
+    this.drawLoop();
+  }
+
   /** The step nearest a point on screen, for a tap; null before anything is drawn. */
   stepAt(clientX: number): number | null {
     const svg = this.host.querySelector("svg");
@@ -422,7 +438,47 @@ export class ScoreView {
   private render(): void {
     this.osmd.render();
     this.stale = true;
+    // A render builds the page anew, and the bars move with the zoom.
+    this.drawLoop();
   }
+
+  private drawLoop(): void {
+    const bars = this.loopBars;
+    const measures = (this.osmd.GraphicSheet?.MeasureList ?? []) as unknown as MeasureBox[][];
+    const first = bars && measures[bars.from - 1]?.find(Boolean);
+    const last = bars && measures[bars.to - 1]?.find(Boolean);
+    // The page OSMD draws into, where the highlight lives too.
+    const page = this.host.querySelector("svg")?.parentElement;
+
+    if (!first || !last || !page) {
+      this.band?.remove();
+      this.band = null;
+      return;
+    }
+
+    // OSMD lays out in its own units, ten pixels each at a zoom of one.
+    const unit = 10 * this.osmd.zoom;
+    const left = first.PositionAndShape.AbsolutePosition.x * unit;
+    const right =
+      (last.PositionAndShape.AbsolutePosition.x + last.PositionAndShape.Size.width) * unit;
+
+    const band = (this.band ??= document.createElement("div"));
+    band.className = "loop-band";
+    band.style.left = `${left}px`;
+    band.style.width = `${Math.max(0, right - left)}px`;
+
+    // Behind the notes like the highlight, and before it, so the highlight
+    // is drawn over the tint and not under it.
+    if (band.parentElement !== page) {
+      const cursor = page.querySelector('img[id^="cursorImg"]');
+      page.insertBefore(band, cursor);
+    }
+  }
+}
+
+/** The part of OSMD's GraphicalMeasure that says where a bar sits. */
+interface MeasureBox {
+  PositionAndShape: { AbsolutePosition: { x: number }; Size: { width: number } };
 }
 
 /**

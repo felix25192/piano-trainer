@@ -1,5 +1,13 @@
 import type { PlayedNote } from "./NoteInputSource";
-import { demandedPitches, inHands, type Hands, type Score, type ScoreStep } from "./score";
+import {
+  demandedPitches,
+  inHands,
+  loopSteps,
+  type Hands,
+  type Score,
+  type ScoreStep,
+  type StepRange,
+} from "./score";
 
 /**
  * Decides whether what was played matches what the score asks for, and moves
@@ -18,8 +26,11 @@ import { demandedPitches, inHands, type Hands, type Score, type ScoreStep } from
 export type MatchOutcome =
   /** Correct note, but the chord is not complete yet. */
   | { kind: "progress"; remaining: number[] }
-  /** Step satisfied; the position moved on. `to` is null at the end of the piece. */
-  | { kind: "advanced"; from: ScoreStep; to: ScoreStep | null }
+  /**
+   * Step satisfied; the position moved on. `to` is null at the end of the
+   * piece. `looped` is set when the move went back to the start of the loop.
+   */
+  | { kind: "advanced"; from: ScoreStep; to: ScoreStep | null; looped?: true }
   /** Note is not part of the current step. The position does not move. */
   | { kind: "wrong"; played: number; expected: number[] }
   /**
@@ -41,6 +52,17 @@ export interface MatcherOptions {
   hands?: Hands;
 }
 
+/**
+ * A span of bars practised over and over, and the steps it runs through.
+ * See `loopSteps` for which steps those are when the score repeats.
+ */
+export interface Loop extends StepRange {
+  /** First bar of the span, as the score counts them. */
+  from: number;
+  /** Last bar of the span. */
+  to: number;
+}
+
 export interface MatcherProgress {
   stepIndex: number;
   totalSteps: number;
@@ -49,7 +71,9 @@ export interface MatcherProgress {
   remaining: number[];
   /** True after a wrong note, until the next correct one. */
   hasError: boolean;
+  /** Never true while a loop is set: the end of the loop leads back to its start. */
   finished: boolean;
+  loop: Loop | null;
 }
 
 export class NoteMatcher {
@@ -66,6 +90,7 @@ export class NoteMatcher {
    * nothing is sounding yet to hold.
    */
   private entering = true;
+  private loopSpan: Loop | null = null;
 
   constructor(score: Score, options: MatcherOptions = {}) {
     this.score = score;
@@ -102,6 +127,7 @@ export class NoteMatcher {
       remaining: this.remaining,
       hasError: this.error,
       finished: this.finished,
+      loop: this.loopSpan,
     };
   }
 
@@ -141,15 +167,56 @@ export class NoteMatcher {
     const remaining = this.remaining;
     if (remaining.length > 0) return { kind: "progress", remaining };
 
+    const was = this.position;
     this.entering = false;
     this.position = this.skipIdle(this.position + 1);
     this.satisfied = new Set();
+
+    // Played past the end of the loop, from inside it: back to its start, as
+    // if put there by hand. Only from inside — a position put somewhere after
+    // the loop never belonged to it and carries on.
+    const loop = this.loopSpan;
+    if (loop && was >= loop.start && was <= loop.end && this.position > loop.end) {
+      this.enter(loop.start);
+      return { kind: "advanced", from: step, to: this.currentStep, looped: true };
+    }
+
     return { kind: "advanced", from: step, to: this.currentStep };
   }
 
-  /** Back to the beginning. */
+  /** Back to the beginning — of the loop, while one is set. */
   reset(): void {
-    this.enter(0);
+    this.enter(this.loopSpan?.start ?? 0);
+  }
+
+  /**
+   * Repeats a span of bars, and puts the position at its start.
+   *
+   * Reports false and changes nothing when the span holds no step at all.
+   * Hands are not part of it: a loop is bars on the page, and changing hands
+   * inside one keeps it.
+   */
+  setLoop(from: number, to: number): boolean {
+    const range = loopSteps(this.score, from, to);
+    if (!range) return false;
+    this.loopSpan = { from: Math.min(from, to), to: Math.max(from, to), ...range };
+    this.enter(range.start);
+    return true;
+  }
+
+  /** Lets the piece run on past the loop again, keeping the place. */
+  clearLoop(): void {
+    this.loopSpan = null;
+  }
+
+  /**
+   * Where a passage played back from here should stop: the end of the loop,
+   * when the position is inside it or before it, so that the loop is what is
+   * heard. Past the loop, or without one, the piece plays to its end.
+   */
+  get passageEnd(): number | null {
+    const loop = this.loopSpan;
+    return loop && this.position <= loop.end ? loop.end : null;
   }
 
   /**

@@ -170,6 +170,18 @@ describe("where it starts and how fast", () => {
   it("reaches to the end of the last note", () => {
     expect(buildSchedule(score, 0).duration).toBeCloseTo(3);
   });
+
+  it("stops after the last step it is given, as at the end of a loop", () => {
+    const { notes, steps, duration } = buildSchedule(score, 0, 1, 1);
+
+    expect(notes.map((n) => n.midi)).toEqual([60, 62]);
+    expect(steps.map((s) => s.index)).toEqual([0, 1]);
+    expect(duration).toBeCloseTo(2);
+  });
+
+  it("plays nothing when the last step comes before the first", () => {
+    expect(buildSchedule(score, 2, 1, 1).notes).toHaveLength(0);
+  });
 });
 
 describe("scores that name no tempo", () => {
@@ -270,5 +282,20 @@ describe("under the pedal", () => {
 
     expect(Number.isFinite(schedule.duration)).toBe(true);
     expect(schedule.notes[0].duration).toBeCloseTo(2);
+  });
+
+  it("lifts the pedal where a passage ends, not where the score lifts it", () => {
+    // Held down over all three steps; the passage stops after the second.
+    const score = scoreOf(
+      { onset: 0, bpm: 60, notes: [note(60, 0.25)], pedalUntil: 1 },
+      { onset: 0.25, bpm: 60, notes: [note(64, 0.25)], pedalUntil: 1 },
+      { onset: 0.5, bpm: 60, notes: [note(67, 0.25)], pedalUntil: 1 },
+    );
+
+    const { notes } = buildSchedule(score, 0, 1, 1);
+
+    // Up to the third step's onset, half a bar at 60: two seconds, one second.
+    expect(notes[0].duration).toBeCloseTo(2);
+    expect(notes[1].duration).toBeCloseTo(1);
   });
 });

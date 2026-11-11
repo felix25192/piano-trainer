@@ -80,7 +80,13 @@ export default function App() {
     score: practice.score,
     tempoFactor,
     from: practice.at,
+    // Inside a loop a passage plays to the loop's end, and the place then goes
+    // back to its start: what was just heard is what is played next.
+    until: practice.passageEnd,
     onReach: practice.follow,
+    onEnd: (atLoopEnd) => {
+      if (atLoopEnd) practice.toLoopStart();
+    },
   });
   const inputs = useInputs({
     onNote: practice.play,
@@ -117,7 +123,9 @@ export default function App() {
     // nothing and stays, since whoever sits at the keyboard changes pieces,
     // not instruments.
     inputs.mic.stop();
-    resumeRef.current = progress ? { key: pieces.selected.key, step: practice.at() } : null;
+    resumeRef.current = progress
+      ? { key: pieces.selected.key, step: practice.at(), loop: progress.loop }
+      : null;
     setSheet(null);
     setWentHome(true);
     setScreen("home");
@@ -156,6 +164,12 @@ export default function App() {
   function jumpToMeasure(measure: number) {
     playback.stop();
     practice.seekToMeasure(measure);
+    setSheet(null);
+  }
+
+  function setLoop(from: number, to: number) {
+    playback.stop();
+    practice.setLoop(from, to);
     setSheet(null);
   }
 
@@ -213,6 +227,7 @@ export default function App() {
       <TopBar
         pieceLabel={pieces.selected.label}
         measure={progress && !progress.finished ? progress.measure : null}
+        loop={progress?.loop ?? null}
         hands={practice.hands}
         ready={score !== null}
         status={busy ? practice.status : finished ? "zu Ende" : ""}
@@ -282,7 +297,10 @@ export default function App() {
         <MeasuresSheet
           measures={score ? playableMeasures(score, practice.hands) : []}
           current={progress?.measure ?? null}
+          loop={progress?.loop ?? null}
           onJump={jumpToMeasure}
+          onLoop={setLoop}
+          onClearLoop={practice.clearLoop}
           onClose={close}
         />
       )}

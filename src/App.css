@@ -127,6 +127,70 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
   background: #24304d;
 }
 
+/* The bars of the loop, or the first one picked for a new one. */
+.measures button.in-loop {
+  background: #1f3a33;
+  color: var(--ok);
+}
+
+.measures button.in-loop.current { border-color: var(--ok); }
+
+/* Above the grid: the loop as it stands, or what to tap next. */
+.loop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--touch);
+}
+
+.loop-row > span { flex: 1; color: var(--ok); }
+.loop-row .hint { margin: 0; }
+
+.loop-row button {
+  min-height: 40px;
+  padding: 0 14px;
+  background: var(--raised);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font: 15px system-ui;
+  cursor: pointer;
+}
+
+.loop-row button:active { filter: brightness(1.4); }
+
+/* In the top bar while a loop is set; a tap leads to where it is changed. */
+.topbar .loop {
+  flex: none;
+  height: 32px;
+  padding: 0 9px;
+  background: transparent;
+  border: 1px solid var(--ok);
+  border-radius: 8px;
+  color: var(--ok);
+  font: 600 14px system-ui;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/*
+ * The looped bars in the score, tinted from bar line to bar line. Drawn
+ * behind the notes, where OSMD puts the highlight too — see ScoreView — so
+ * nothing on the page is dimmed by it. The edges are lines of their own,
+ * since that is where the music turns back.
+ */
+.loop-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: rgba(62, 207, 142, .12);
+  border-left: 2px solid rgba(62, 207, 142, .7);
+  border-right: 2px solid rgba(62, 207, 142, .7);
+}
+
 /* The one thing worth glancing at mid-piece. */
 .expect {
   flex: 1;

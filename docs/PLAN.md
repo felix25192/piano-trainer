@@ -28,11 +28,16 @@ Linie. Spike A ist in Safari auf dem iPad bestanden, gemessen und nicht
 vermutet.
 
 Veroeffentlicht unter <https://felix25192.github.io/piano-trainer/>, bei jedem
-Push auf `main` automatisch aktualisiert. 282 Tests.
+Push auf `main` automatisch aktualisiert. 305 Tests.
 
 **Seit dem 10.11. spielt auch ein MIDI-Keyboard die App**, beide Haende
 zugleich, am Rechner in Chrome und Edge. Am echten Kawai ist das noch nicht
 ausprobiert, das ist Teil E der Testrunde.
+
+**Seit dem 11.11. laesst sich eine Spanne von Takten wiederholen**, im
+Takt-Panel gewaehlt. Von den Schritten nach dem Abschnitt vom 10.11. sind
+damit 2 bis 4 erledigt; offen sind die Testrunde, der Tempo-Modus und die
+zwei Haende ueber das Mikrofon.
 
 **Als Naechstes.** Der Mikrofonknopf ist gebaut, aber am Instrument noch nie
 ausprobiert - das ist der offene Faden. Am 24.09. hat sich gezeigt, dass er in
@@ -2000,3 +2005,96 @@ stillen Audiostrom:
 
 An der Audio-Sitzung hat sich nichts geaendert: `audioSession.ts` ist
 unberuehrt, und die Pruefung mit grep zeigt dieselben zwei erlaubten Treffer.
+
+## Die Takt-Schleife (11.11.2026)
+
+Schritt 4 aus dem Abschnitt vom 10.11. Eine Spanne von Takten wird
+wiederholt, bis sie sich liest.
+
+### Abgestimmt
+
+- **Gesetzt im Takt-Panel**: "↻ Schleife waehlen", dann den ersten und den
+  letzten Takt antippen. Derselbe Takt zweimal wiederholt nur ihn. Oben steht
+  dann "↻ 5–8", ein Tipp darauf fuehrt zurueck ins Panel, zum Aendern oder
+  Aufheben. Das Waehlen ist ein eigener Modus: ausserhalb springt ein Tipp in
+  den Takt, innerhalb markiert er, und so bedeutet ein Tipp immer nur eines.
+- **Vorspielen** spielt innerhalb einer Schleife bis zu ihrem Ende, und danach
+  steht die Markierung wieder an ihrem Anfang. Was gerade zu hoeren war, ist
+  das, was als Naechstes gespielt wird.
+- **Im Notenbild** sind die Takte der Schleife getoent, von Taktstrich zu
+  Taktstrich.
+
+Selbst entschieden: Gezaehlt werden die Durchgaenge nicht, das waere der
+Anfang einer Punktetafel. Und die Schleife kommt mit der Stelle zurueck, wenn
+man ueber die Startseite geht.
+
+### Welcher Durchgang gemeint ist
+
+Die Schritte folgen dem Weg, den ein Pianist spielt, mit allen
+Wiederholungen. Ein Takt kann also zweimal vorkommen, und "Takt 15 bis 18"
+ist nicht einfach jeder Schritt mit einer Taktzahl dazwischen. Im Menuett
+wird Takt 1 bis 16 wiederholt: Wer 15 bis 18 uebt, meint 15, 16, 17, 18 und
+nicht 15, 16, dann zurueck an den Anfang.
+
+`loopSteps` in `core/score.ts` entscheidet das so: Eine Schleife beginnt mit
+einem Durchgang durch den ersten Takt, bleibt in der Spanne, hoert vor dem
+naechsten Durchgang durch den ersten Takt auf und endet mit dem letzten
+Schritt des letzten Takts. Genommen wird der erste solche Durchgang, der den
+letzten Takt ueberhaupt erreicht.
+
+Die erste Fassung war einfacher, und ihr eigener Test hat sie widerlegt: Sie
+nahm jede zusammenhaengende Strecke in der Spanne. Ist der erste Takt selbst
+wiederholt, kaeme er dann am Umkehrpunkt zweimal hintereinander, und bei
+einer ersten Klammer am Ende der Spanne gleich mit. Die Tests nennen jetzt
+die Faelle: eine Wiederholung zurueck aus der Spanne hinaus, eine
+Wiederholung innerhalb der Spanne, erste und zweite Klammer.
+
+### Im Matcher
+
+`setLoop` legt die Spanne fest und setzt die Stelle an ihren Anfang. Wer
+nach dem letzten Ton der Schleife weiterspielt, landet wieder dort, so als
+haette er hingetippt: Ein Bindebogen, der in die Schleife hineinreicht, wird
+dort also verlangt, denn beim Neuanfang klingt noch nichts. Zurueck geht es
+nur von innen. Wer hinter die Schleife tippt, spielt einfach weiter. "Von
+vorn" heisst in einer Schleife: von ihrem Anfang. Die Haende zu wechseln
+behaelt die Schleife, denn sie besteht aus Takten auf der Seite und haengt
+nicht an einer Hand.
+
+### Beim Vorspielen
+
+`buildSchedule` nimmt einen letzten Schritt an. Dabei fiel etwas auf: Ein
+Pedal, das ueber das Ende der Passage hinaus gehalten ist, liess die Toene in
+den naechsten Takt hineinklingen. Es hebt sich jetzt dort, wo der naechste
+Schritt begonnen haette. Das Pedal gehoert zur Musik, die man hoert.
+
+### Der getoente Bereich
+
+Die Kanten kommen aus OSMDs eigener Anordnung der Takte, nicht aus den Noten.
+Vorher nachgemessen: Am Menuett liegt diese Geometrie hoechstens 0,8 px neben
+den gezeichneten Taktstrichen, das ist die Breite des Strichs selbst. Der
+Bereich liegt wie die Markierung hinter den Noten (OSMD zeichnet sie mit
+`z-index: -1`) und vor ihr im Dokument, damit die Markierung ueber der
+Toenung liegt. Nach jedem Neuzeichnen wird er neu gesetzt. Gemessen nach
+einer Groessenaenderung von Hand und nach einer, die das Fenster selbst
+ausgeloest hat: beide Kanten sitzen wieder auf den Strichen.
+
+### Probe
+
+23 neue Tests, 305 insgesamt. Im Browser:
+
+- Mondscheinsonate, Schleife 3 bis 4: 24 Weiter-Tipper, das sind zwei Takte
+  Triolen, dann zurueck auf den ersten Schritt von Takt 3.
+- Vorspielen: etwa zehn Sekunden ueber Takt 3 und 4, nie in Takt 5, danach
+  steht die Markierung am Anfang von Takt 3.
+- "Von vorn" fuehrt an den Anfang der Schleife, die Haende zu wechseln
+  behaelt sie, ueber die Startseite und zurueck sind Stelle und Schleife noch
+  da.
+- Aendern auf einen einzelnen Takt, Aufheben: Die Toenung verschwindet, und
+  es geht ueber Takt 5 hinaus weiter. Ein anderes Stueck hat keine Schleife.
+- Menuett, Schleife 15 bis 18 ueber die Wiederholung hinweg: 15, 16, 17, 18,
+  dann wieder 15.
+- Keine Fehler in der Konsole nach frischem Laden. Waehrend des Umbaus hatte
+  der Hot-Reload eine falsche Reihenfolge der Hooks gemeldet, weil ein Effekt
+  dazukam; das ist ein Artefakt des Neuladens im laufenden Betrieb.
+
+Am Instrument ungeprueft, wie alles seit dem 22.10.

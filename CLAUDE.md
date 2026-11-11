@@ -83,7 +83,7 @@ export PATH="/c/Program Files/nodejs:$PATH"
 ```
 
 ```bash
-npx vitest run          # 282 tests
+npx vitest run          # 305 tests
 npx tsc -b --noEmit     # types
 npx oxlint              # lint; silence means clean
 npm run build
@@ -191,6 +191,17 @@ would be nothing ahead to read. Tapping the score sets the position. Piece and m
 bar, and so are the hands: both, right alone or left alone. With one hand
 chosen the other stays on the page and is simply not asked for — its notes,
 played anyway, are let through rather than marked wrong.
+
+**A span of bars can be looped**, picked in the measure panel: first bar,
+last bar. Past the last note of the loop the position goes back to its
+start, the bars are tinted in the score from bar line to bar line — the
+edges come from OSMD's layout and sit within 0.8 px of the drawn lines — and
+the top bar says "↻ 5–8". A passage played back inside a loop stops at its
+end and the place returns to its start, so what was heard is what is played
+next. Steps follow the route with repeats, so a bar can come twice;
+`loopSteps` in `core/score.ts` decides which pass a loop means, and its tests
+name the cases: a repeat back out of the span, a repeat inside it, first and
+second endings.
 
 A tied note is asked for once, where it is struck, and passed over where it
 is held: a tie is one sound. Striking it again counts as a misreading. The
