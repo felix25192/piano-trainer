@@ -2098,3 +2098,117 @@ ausgeloest hat: beide Kanten sitzen wieder auf den Strichen.
   dazukam; das ist ein Artefakt des Neuladens im laufenden Betrieb.
 
 Am Instrument ungeprueft, wie alles seit dem 22.10.
+
+## Entwurf: der Tempo-Modus (11.11.2026)
+
+Schritt 5 aus dem Abschnitt vom 10.11. Noch nicht gebaut, hier steht der
+Entwurf, abgestimmt, mit den Regeln so genau, dass sie sich testen lassen.
+
+Was er ist: Die Markierung laeuft im Tempo weiter, ob getroffen wird oder
+nicht. Man liest voraus und spielt weiter, statt beim Fehler stehen zu
+bleiben. So geht Blattspiel, und das uebt der Warte-Modus nicht.
+
+### Abgestimmt
+
+- **Ein Knopf "Im Tempo"** unten in der Leiste startet einen Durchlauf. Er
+  zaehlt einen Takt sichtbar vor, dann laeuft die Markierung bis zum Ende des
+  Stuecks, zum Ende der Schleife oder bis zum zweiten Druck. Danach ist wieder
+  der Warte-Modus da. Es gibt keinen Modus, den man zurueckzustellen vergessen
+  kann.
+- **Das Tempo in Vierteln pro Minute**, voreingestellt 60, einstellbar in den
+  Einstellungen und auf dem Knopf zu lesen. Tempowechsel im Stueck bleiben im
+  Verhaeltnis: Gerechnet wird ein Faktor aus dem gewaehlten Tempo und dem
+  notierten an der Startstelle, so wie beim Vorspielen. Prozente vom
+  notierten Tempo taugen hier nicht, weil die notierten Tempi Konzerttempi
+  sind; die Mondscheinsonate verlangt 180.
+- **Zeichen an den Stellen, die nicht stimmten**: ✗ fuer falsch, ○ fuer
+  verpasst. Eine Form statt einer Farbe, ohne Zahl und ohne Verlauf. Sie
+  bleiben stehen, bis der naechste Durchlauf beginnt oder ins Notenbild
+  getippt wird.
+- **Der Rhythmus zaehlt grosszuegig**: Eine Stelle gilt, wenn ihre Toene in
+  ihrem eigenen Zeitfenster kommen. Geuebt wird das Weiterspielen, nicht die
+  Praezision. Strenger kann es spaeter werden.
+
+### Selbst entschieden, und warum
+
+- **Einzaehlen und Puls nur sichtbar.** Ton und Mikrofon koennen nicht
+  zugleich das Geraet halten (`core/audioMode.ts`). Ein Klick ginge nur mit
+  MIDI; vorerst keiner, damit beide Instrumente gleich ueben.
+- **Gezaehlt wird ein Takt der Taktart an der Startstelle.** Dafuer bekommt
+  das Notenmodell die Taktart, aus OSMD gelesen. Bisher kennt es sie nicht.
+  Vier Schlaege fuer jeden Takt waeren vor einem Menuett im Dreivierteltakt
+  falsch.
+- **In einer Schleife** laeuft ein Durchgang bis zu ihrem Ende, dann ist
+  Schluss, damit man die Zeichen ansehen kann.
+- **Nach dem Durchlauf** steht die Markierung wieder an seinem Anfang: Der
+  naechste Versuch beginnt an derselben Stelle, und die Zeichen stehen davor.
+- **Ohne Instrument** startet kein Durchlauf. Ist weder Mikrofon noch MIDI
+  an, sagt die App das, statt alles als verpasst zu markieren.
+- **Die Markierung springt Stelle fuer Stelle**, wie beim Vorspielen; das ist
+  erprobt. Gleitendes Scrollen kommt nur, falls das Vorauslesen leidet.
+
+### Die Regeln
+
+Gerechnet wird in Sekunden ab dem ersten Schlag nach dem Einzaehlen. Die
+Zeitpunkte der Stellen kommen aus `buildSchedule`, derselben Rechnung wie
+beim Vorspielen, mit Faktor und Schleifenende. Triolen, Tempowechsel und
+Wiederholungen stimmen damit von selbst.
+
+1. **Nur Stellen, an denen etwas verlangt ist, bekommen ein Fenster**, also
+   was `demandedPitches` fuer die gewaehlten Haende liefert. An der ersten
+   Stelle wird ein Bindebogen verlangt, wie beim Hineintippen.
+2. **Das Fenster einer Stelle** reicht von kurz vor ihrem Zeitpunkt bis kurz
+   vor dem der naechsten verlangten Stelle. "Kurz vor" heisst ein Viertel des
+   Abstands zur vorigen Stelle, hoechstens 0,15 s. Die Fenster schliessen
+   lueckenlos aneinander an, jeder Ton faellt also in genau eines. Ein Ton
+   waehrend einer Pause zaehlt noch zur Stelle davor.
+3. **Ein Ton im Fenster** ist richtig, wenn er dort verlangt ist. Er wird
+   uebergangen, wenn ihn die andere Hand an dieser Stelle hat, waehrend nur
+   eine geuebt wird, wie im Warte-Modus. Sonst ist er falsch.
+4. **Das Urteil fuer die Stelle**: falsch, sobald ein falscher Ton im Fenster
+   war, auch wenn die richtigen dazukamen. Getroffen, wenn alle verlangten
+   Toene kamen. Sonst verpasst; ein halber Akkord ist also verpasst.
+5. **Gefaellt wird es erst nach einer Nachfrist von 0,2 s nach dem
+   Fenster**, denn das Mikrofon antwortet 0,1 s nach dem Anschlag, und ein
+   rechtzeitiger Ton darf nicht als verpasst gelten, nur weil seine Antwort
+   unterwegs war.
+
+### Der eine Umbau im Fundament
+
+Der Port `NoteInputSource` meldet heute als `time` die Millisekunden seit dem
+Start der jeweiligen Quelle: Jede Eingabe hat ihre eigene Uhr. Fuer den Takt
+braucht es eine gemeinsame. Kuenftig ist `time` der Zeitpunkt des
+**Anschlags** auf der Uhr der Seite (`performance.now`):
+
+- MIDI liefert den Zeitstempel des Ereignisses selbst, genauer als der
+  Moment, in dem das Programm es bearbeitet.
+- Das Mikrofon liefert den Moment des Anschlags, nicht den der Erkennung.
+  Wie weit sein Zeitstempel hinter dem echten Anschlag liegt (Puffer,
+  Eingangslatenz), ist ungemessen. Bei grosszuegigem Rhythmus ist das
+  unkritisch, bei strengem waere es die erste Messung.
+
+Der Warte-Modus schaut nicht auf die Zeit; fuer ihn aendert sich nichts.
+
+### Wo es hingehoert
+
+- `core/tempoRun.ts`, neu und rein: Fenster bauen, Toene einsortieren,
+  Urteile faellen. Getestet mit erfundenen Zeiten, ohne Browser.
+- Das Notenmodell bekommt die Taktart je Takt, `osmdScore.ts` liest sie.
+- `ScoreView` zeichnet die Zeichen wie die Schleifentoenung: an der Stelle,
+  ueber dem System, nach jedem Neuzeichnen neu.
+- `shell/useTempoRun.ts` haelt die Uhr, das Einzaehlen und die Markierung;
+  App.tsx leitet gespielte Toene waehrend eines Durchlaufs dorthin statt an
+  den Matcher.
+
+### Was danach weiter gelten muss
+
+Der Warte-Modus Ton fuer Ton, das Vorspielen, Mikrofon und MIDI nie zugleich,
+die Schleife, das Anschlagsprotokoll. Am Ton aendert sich nichts; die
+sechs Audio-Punkte gelten nur, falls doch.
+
+### Ehrlich dazu
+
+Am Mikrofon ist der Tempo-Modus nur so gut wie die Erkennung: einstimmig,
+also eine Hand, und mit Pedal hoert es am Pruefstand nur 12 von 26 Toenen.
+Was es nicht hoert, erscheint als verpasst und ist von einem echten
+Versaeumnis nicht zu unterscheiden. Mit MIDI gilt das nicht.
