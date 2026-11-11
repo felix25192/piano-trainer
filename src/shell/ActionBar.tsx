@@ -1,4 +1,5 @@
 import type { PlaybackState } from "./usePlayback";
+import type { ShownBeat } from "./useTempoRun";
 
 interface Props {
   /** A score is loading or failed to. */
@@ -8,6 +9,8 @@ interface Props {
   audioSupported: boolean;
   mic: { supported: boolean; on: boolean; toggle: () => void };
   midi: { supported: boolean; devices: string[] | null; toggle: () => void };
+  /** A run in tempo: whether one is going, its tempo, and the beat to show. */
+  tempo: { running: boolean; bpm: number; beat: ShownBeat | null; toggle: () => void };
   onRestart: () => void;
   onPlay: () => void;
   onNext: () => void;
@@ -20,14 +23,16 @@ interface Props {
  * and the instrument drives the app. So the instruments get the room here, with
  * their names on them, and everything else is a single symbol.
  */
-export function ActionBar({ busy, finished, playback, audioSupported, mic, midi, ...on }: Props) {
+export function ActionBar({ busy, finished, playback, audioSupported, mic, midi, tempo, ...on }: Props) {
   const playing = playback !== "idle";
+  // Nothing else moves the position while the clock does.
+  const locked = busy || playing || tempo.running;
   const midiOn = midi.devices !== null;
   const midiLabel = midi.devices?.length ? midi.devices.join(", ") : "kein Gerät verbunden";
 
   return (
     <div className="actions">
-      <button className="secondary" onClick={on.onRestart} aria-label="Von vorn" disabled={busy || playing}>
+      <button className="secondary" onClick={on.onRestart} aria-label="Von vorn" disabled={locked}>
         ↺
       </button>
 
@@ -47,7 +52,7 @@ export function ActionBar({ busy, finished, playback, audioSupported, mic, midi,
               ? "Klänge werden geladen"
               : "Ab hier vorspielen"
         }
-        disabled={busy || !audioSupported}
+        disabled={busy || !audioSupported || tempo.running}
       >
         {playback === "playing" ? "■" : playback === "loading" ? "…" : "▶"}
       </button>
@@ -100,6 +105,45 @@ export function ActionBar({ busy, finished, playback, audioSupported, mic, midi,
       )}
 
       {/*
+        A run in tempo: the highlight moves on by the clock, whatever is
+        played. While it runs the button shows the beat, with the downbeat
+        marked, and stops the run on a second press.
+      */}
+      <button
+        className={"input" + (tempo.running ? " on" : "")}
+        onClick={tempo.toggle}
+        aria-pressed={tempo.running}
+        aria-label={tempo.running ? "Durchlauf anhalten" : `Im Tempo spielen, ${tempo.bpm} Viertel pro Minute`}
+        title={tempo.running ? "Durchlauf anhalten" : "Im Tempo spielen"}
+        disabled={busy || playing}
+      >
+        {tempo.running ? (
+          <>
+            <span aria-hidden="true">■</span>
+            {tempo.beat && (
+              <span
+                key={tempo.beat.serial}
+                className={"beat" + (tempo.beat.number === 1 ? " down" : "")}
+                aria-hidden="true"
+              >
+                {tempo.beat.number}
+              </span>
+            )}
+          </>
+        ) : (
+          <>
+            {/* A metronome: the body, and the pendulum swung to one side. */}
+            <svg viewBox="0 0 24 24" className="glyph" aria-hidden="true">
+              <path d="M9.5 3h5l4 18h-13z" />
+              <path d="M6.3 17h11.4" />
+              <path d="M12 14l5-8.5" />
+            </svg>
+            <span>Tempo {tempo.bpm}</span>
+          </>
+        )}
+      </button>
+
+      {/*
         Reading along without an instrument: name the notes in your head, then
         move on. Same as the space bar, and it moves past a whole chord at once.
       */}
@@ -108,7 +152,7 @@ export function ActionBar({ busy, finished, playback, audioSupported, mic, midi,
         onClick={on.onNext}
         aria-label="Weiter, ohne zu spielen"
         title="Weiter (Leertaste)"
-        disabled={busy || playing || finished}
+        disabled={locked || finished}
       >
         →
       </button>

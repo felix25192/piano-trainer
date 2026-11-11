@@ -114,7 +114,10 @@ export class MicInput implements NoteInputSource {
 
     const played: PlayedNote = {
       midi: heard.midi,
-      time: heard.struckAt * 1000,
+      // The strike on the page's clock. `struckAt` counts from the start of
+      // listening; how far it trails the hammer on the string — the
+      // analyser's buffer, the input's own latency — is unmeasured.
+      time: this.startedAt + heard.struckAt * 1000,
       confidence: heard.clarity ?? 0,
     };
     for (const listener of this.listeners) listener(played);

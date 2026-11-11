@@ -134,6 +134,30 @@ export function buildSchedule(
   return { notes, steps: scheduled, duration };
 }
 
+/**
+ * A clock for the piece from one step on: seconds since that step for any
+ * musical position, at the given speed — the same arithmetic as the schedule,
+ * so a beat and a note at the same place in the score fall at the same second.
+ *
+ * Positions before the step, which only a count-in asks about, run at the
+ * step's own tempo: there is no music there to take another one from.
+ */
+export function timeline(score: Score, fromStep: number, tempoFactor = 1): (onset: number) => number {
+  const steps = score.steps;
+  if (steps.length === 0) return () => 0;
+
+  const factor = tempoFactor > 0 ? tempoFactor : 1;
+  const first = Math.min(clampIndex(fromStep, steps.length), steps.length - 1);
+  const elapsed = secondsPerStep(score);
+  const origin = elapsed[first];
+  const start = steps[first];
+
+  return (onset) =>
+    onset >= start.onset
+      ? (secondsAt(score, elapsed, onset) - origin) / factor
+      : wholeNotesToSeconds(onset - start.onset, start.bpm) / factor;
+}
+
 /** Which step is due at a given moment — the last one that has started. */
 export function stepAtTime(schedule: Schedule, seconds: number): number | null {
   const steps = schedule.steps;

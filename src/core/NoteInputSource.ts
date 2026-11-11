@@ -13,7 +13,15 @@
 export interface PlayedNote {
   /** MIDI note number of the pitch that was recognised. */
   midi: number;
-  /** Milliseconds since the input source was started. */
+  /**
+   * When the key was struck, in milliseconds on the page's clock
+   * (`performance.now()`) — the same clock for every source, so a run in
+   * tempo can lay notes from a cable and from the air on one time line.
+   *
+   * The strike, not the moment it was recognised: the microphone knows a
+   * note only a tenth of a second after it began, and that delay is the
+   * detector's, not the player's.
+   */
   time: number;
   /**
    * How sure the source is, from 0 to 1. A MIDI keyboard always reports 1;

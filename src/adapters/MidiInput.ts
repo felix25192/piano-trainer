@@ -28,7 +28,6 @@ export class MidiInput implements NoteInputSource {
   private ports: MIDIInput[] = [];
   private listeners = new Set<NoteListener>();
   private deviceListeners = new Set<DevicesListener>();
-  private startedAt = 0;
   /**
    * Counts stops, so a start still waiting for permission can tell that it
    * was called off meanwhile and must not attach to anything.
@@ -64,7 +63,6 @@ export class MidiInput implements NoteInputSource {
     if (generation !== this.generation) return;
 
     this.access = access;
-    this.startedAt = performance.now();
     this.attach();
 
     if (this.ports.length === 0) {
@@ -158,7 +156,9 @@ export class MidiInput implements NoteInputSource {
 
     const played: PlayedNote = {
       midi: note,
-      time: performance.now() - this.startedAt,
+      // When the keyboard said so, on the page's clock; the event carries it.
+      // A browser that leaves it empty gets the moment it arrived instead.
+      time: event.timeStamp > 0 ? event.timeStamp : performance.now(),
       // A key press is a fact, not an estimate.
       confidence: 1,
     };

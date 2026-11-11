@@ -17,6 +17,7 @@ import { useInputs } from "./shell/useInputs";
 import { usePieces } from "./shell/usePieces";
 import { usePlayback } from "./shell/usePlayback";
 import { useScoreView, ZOOM_MAX, ZOOM_MIN, type Resume } from "./shell/useScoreView";
+import { TEMPO_DEFAULT, TEMPO_MAX, TEMPO_MIN, useTempoRun } from "./shell/useTempoRun";
 import "./App.css";
 
 /**
@@ -59,6 +60,10 @@ export default function App() {
   const [autoFit, setAutoFit] = useState(true);
   const [fingerings, setFingerings] = useState(true);
   const [tempoFactor, setTempoFactor] = useState(1);
+  /** Quarters per minute for a run in tempo. */
+  const [runBpm, setRunBpm] = useState(TEMPO_DEFAULT);
+  /** Why a run in tempo did not start, until the next try. */
+  const [runNotice, setRunNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>({
     kind: "scale",
     key: keyOf("C", 0, "major"),
@@ -88,8 +93,22 @@ export default function App() {
       if (atLoopEnd) practice.toLoopStart();
     },
   });
+  const tempo = useTempoRun({
+    score: practice.score,
+    hands: practice.hands,
+    bpm: runBpm,
+    from: practice.at,
+    // In a loop, one pass and then stop, so the marks can be looked at.
+    until: practice.passageEnd,
+    onReach: practice.follow,
+    // The next try starts where this one did, with the marks before it.
+    onEnd: (startStep) => practice.seek(startStep),
+    markSteps: practice.markSteps,
+  });
   const inputs = useInputs({
-    onNote: practice.play,
+    // During a run the clock decides, not the matcher: notes go to the run,
+    // with the time they were struck.
+    onNote: (note) => (tempo.isActive() ? tempo.noteOn(note) : practice.play(note.midi)),
     expected: practice.remaining,
     playingBack: playback.isActive,
     beforeListening: () => {
@@ -101,15 +120,16 @@ export default function App() {
   // The space bar moves on like the next button, for reading along at a desk.
   const { next } = practice;
   const { isActive: playingBack } = playback;
+  const { isActive: running } = tempo;
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.code !== "Space") return;
       e.preventDefault();
-      if (!playingBack()) next();
+      if (!playingBack() && !running()) next();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [next, playingBack]);
+  }, [next, playingBack, running]);
 
   const { score, progress } = practice;
   const busy = practice.status !== "bereit";
@@ -119,6 +139,7 @@ export default function App() {
   /** Leaves the score, keeping the bar it stood on for the way back. */
   function goHome() {
     playback.stop();
+    tempo.stop();
     // The microphone holds the device's audio and is given back; MIDI holds
     // nothing and stays, since whoever sits at the keyboard changes pieces,
     // not instruments.
@@ -142,6 +163,26 @@ export default function App() {
     setScreen("practice");
   }
 
+  /**
+   * Starts a run in tempo, or stops the one going.
+   *
+   * Not without an instrument: with neither the microphone nor MIDI on, every
+   * step would come out missed, and that says nothing about the reading.
+   */
+  function toggleRun() {
+    if (tempo.isActive()) {
+      tempo.stop();
+      return;
+    }
+    if (!inputs.mic.on && inputs.midi.devices === null) {
+      setRunNotice("Für einen Durchlauf im Tempo zuerst das Mikrofon oder MIDI einschalten.");
+      return;
+    }
+    setRunNotice(null);
+    playback.stop();
+    tempo.start();
+  }
+
   function togglePlay() {
     // The two cannot both hold the device, so asking to hear the passage
     // means giving up listening for it.
@@ -149,32 +190,39 @@ export default function App() {
     void playback.toggle();
   }
 
-  // Every way of moving the position by hand stops a passage that is playing:
-  // the highlight cannot follow the sound and the hand at once.
-  function restart() {
+  // Every way of moving the position by hand stops whatever moves it by the
+  // clock — a passage playing, or a run: the highlight cannot follow both.
+  function stopClocks() {
     playback.stop();
+    tempo.stop();
+  }
+
+  function restart() {
+    stopClocks();
     practice.reset();
   }
 
   function changeHands(next: Hands) {
-    playback.stop();
+    stopClocks();
     practice.changeHands(next);
   }
 
   function jumpToMeasure(measure: number) {
-    playback.stop();
+    stopClocks();
     practice.seekToMeasure(measure);
     setSheet(null);
   }
 
   function setLoop(from: number, to: number) {
-    playback.stop();
+    stopClocks();
     practice.setLoop(from, to);
     setSheet(null);
   }
 
+  /** A tap moves the position, and takes the marks of the last run away. */
   function tap(clientX: number) {
-    playback.stop();
+    stopClocks();
+    tempo.clearMarks();
     practice.seekAt(clientX);
   }
 
@@ -220,6 +268,7 @@ export default function App() {
   }
 
   const errors = [practice.error, playback.error, inputs.mic.error, inputs.midi.error];
+  const runningNow = tempo.state !== "idle";
   const close = () => setSheet(null);
 
   return (
@@ -239,6 +288,8 @@ export default function App() {
       />
 
       {errors.map((error, i) => error && <pre key={i} className="error-box">{error}</pre>)}
+
+      {runNotice && !runningNow && <p className="notice">{runNotice}</p>}
 
       {inputs.midi.devices?.length === 0 && (
         <p className="notice">
@@ -272,10 +323,21 @@ export default function App() {
         audioSupported={isAudioSupported()}
         mic={inputs.mic}
         midi={inputs.midi}
+        tempo={{ running: runningNow, bpm: runBpm, beat: tempo.beat, toggle: toggleRun }}
         onRestart={restart}
         onPlay={togglePlay}
         onNext={practice.next}
       />
+
+      {/*
+        The count-in, large enough to read from the keyboard. Keyed by the
+        beat, so each number appears afresh and not as an edit of the last.
+      */}
+      {tempo.beat?.counting && (
+        <div className="count-in" key={tempo.beat.serial} aria-live="assertive">
+          {tempo.beat.number}
+        </div>
+      )}
 
       {inputs.protocol.on && <Protocol entries={inputs.protocol.entries} listening={inputs.mic.on} />}
 
@@ -327,6 +389,8 @@ export default function App() {
           protocol={inputs.mic.supported ? inputs.protocol : null}
           tempoFactor={tempoFactor}
           onTempo={changeTempo}
+          runBpm={runBpm}
+          onRunBpm={(bpm) => setRunBpm(clamp(bpm, TEMPO_MIN, TEMPO_MAX))}
           audioSupported={isAudioSupported()}
           currentBpm={
             score ? (score.steps[progress?.stepIndex ?? 0]?.bpm ?? score.steps[0]?.bpm) : undefined

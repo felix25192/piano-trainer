@@ -3,7 +3,7 @@ import { NoteMatcher, type MatcherProgress } from "../core/NoteMatcher";
 import { buildExercise } from "../core/exercises";
 import { exerciseToMusicXml } from "../core/musicxml";
 import type { Hands, Score } from "../core/score";
-import { ScoreView } from "../adapters/osmdScore";
+import { ScoreView, type Mark } from "../adapters/osmdScore";
 import { getScoreBlob } from "../adapters/scoreLibrary";
 import type { Selection } from "../pieces";
 import { describeError, round } from "./format";
@@ -333,6 +333,11 @@ export function useScoreView({ selection, active, zoom, autoFit, onFit, resume }
     sync();
   }, [showHere, sync]);
 
+  /** Puts the signs of a run in tempo above the steps, or clears them with null. */
+  const markSteps = useCallback((marks: ReadonlyMap<number, Mark> | null) => {
+    viewRef.current?.markSteps(marks);
+  }, []);
+
   /** Where a passage played back from here stops; null for the end of the piece. */
   const passageEnd = useCallback(() => matcherRef.current?.passageEnd ?? null, []);
 
@@ -362,5 +367,6 @@ export function useScoreView({ selection, active, zoom, autoFit, onFit, resume }
     clearLoop,
     toLoopStart,
     passageEnd,
+    markSteps,
   };
 }

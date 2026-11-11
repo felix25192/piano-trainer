@@ -12,7 +12,7 @@ import type { PlayedNote } from "../core/NoteInputSource";
 class FakePort {
   state: "connected" | "disconnected" = "connected";
   connection: "open" | "closed" | "pending" = "closed";
-  onmidimessage: ((event: { data: Uint8Array }) => void) | null = null;
+  onmidimessage: ((event: { data: Uint8Array; timeStamp: number }) => void) | null = null;
 
   readonly id: string;
   readonly name: string;
@@ -33,7 +33,12 @@ class FakePort {
   }
 
   send(...bytes: number[]) {
-    this.onmidimessage?.({ data: new Uint8Array(bytes) });
+    this.sendAt(0, ...bytes);
+  }
+
+  /** With the timestamp a browser puts on the event; 0 is what one that leaves it empty gives. */
+  sendAt(timeStamp: number, ...bytes: number[]) {
+    this.onmidimessage?.({ data: new Uint8Array(bytes), timeStamp });
   }
 }
 
@@ -89,6 +94,20 @@ describe("MidiInput", () => {
     expect(notes).toHaveLength(1);
     expect(notes[0].midi).toBe(60);
     expect(notes[0].confidence).toBe(1);
+  });
+
+  it("reports the strike at the time the keyboard stamped, on the page's clock", async () => {
+    const midi = new MidiInput();
+    const notes: PlayedNote[] = [];
+    midi.onNoteOn((n) => notes.push(n));
+    await midi.start();
+
+    kawai.sendAt(1234.5, 0x90, 60, 64);
+    kawai.send(0x90, 62, 64);
+
+    expect(notes[0].time).toBe(1234.5);
+    // No stamp: the moment it arrived, which is on the same clock.
+    expect(Math.abs(notes[1].time - performance.now())).toBeLessThan(1000);
   });
 
   it("takes a key on any channel", async () => {

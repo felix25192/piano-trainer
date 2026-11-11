@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSchedule, FALLBACK_BPM, stepAtTime } from "./playback";
+import { buildSchedule, FALLBACK_BPM, stepAtTime, timeline } from "./playback";
 import type { ExpectedNote, Score, ScoreStep } from "./score";
 
 /** A struck note of the given length in whole notes. */
@@ -136,6 +136,21 @@ describe("tempo changes", () => {
     );
 
     expect(buildSchedule(across, 0).notes[0].duration).toBeCloseTo(60 / 72 + 60 / 30);
+  });
+
+  it("gives a beat between two steps the same second the schedule gives the notes", () => {
+    const clock = timeline(score, 1);
+    const { steps } = buildSchedule(score, 1);
+
+    for (const step of steps) expect(clock(score.steps[step.index].onset)).toBeCloseTo(step.at);
+    // Half way through the quarter before the change: still at 72.
+    expect(clock(0.375)).toBeCloseTo(0.5 * (60 / 72));
+  });
+
+  it("counts in before the start at the start's own tempo, scaled like the rest", () => {
+    // From the third step, at 30, and played at half speed: a quarter before
+    // it lasts four seconds.
+    expect(timeline(score, 2, 0.5)(0.25)).toBeCloseTo(-4);
   });
 });
 

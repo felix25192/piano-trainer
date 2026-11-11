@@ -676,3 +676,71 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
 @media (min-width: 900px) {
   .actions { max-width: 720px; margin: 0 auto; width: 100%; }
 }
+
+/* ---------- a run in tempo ---------- */
+
+/*
+ * The count-in: one number in the middle of the screen, large enough to read
+ * from the keyboard, fading as its beat passes.
+ */
+.count-in {
+  position: fixed;
+  left: 50%;
+  top: 45%;
+  translate: -50% -50%;
+  font: 700 120px/1 system-ui;
+  color: var(--accent);
+  pointer-events: none;
+  animation: count-beat 600ms ease-out forwards;
+}
+
+@keyframes count-beat {
+  from { opacity: 1; scale: 1.15; }
+  to { opacity: .35; scale: 1; }
+}
+
+/* The beat on the tempo button while a run goes; the downbeat larger. */
+.actions .beat {
+  display: inline-block;
+  min-width: 1.2em;
+  animation: pulse-beat 300ms ease-out;
+}
+
+.actions .beat.down { font-size: 19px; }
+
+@keyframes pulse-beat {
+  from { scale: 1.5; }
+  to { scale: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .count-in, .actions .beat { animation: none; }
+}
+
+/*
+ * The signs a run leaves above the steps it found fault with: ✗ wrong,
+ * ○ missed. Above the system so that no note is covered, and told apart by
+ * shape so that they read without colour.
+ */
+.step-marks {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.step-mark {
+  position: absolute;
+  top: 2px;
+  translate: -50% 0;
+  padding: 1px 4px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .85);
+  font: 700 18px/1 system-ui;
+}
+
+.step-mark.wrong { color: #c62828; }
+.step-mark.missed { color: #5f6b7a; }

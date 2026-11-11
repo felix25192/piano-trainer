@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Heard } from "../core/hearing";
+import type { PlayedNote } from "../core/NoteInputSource";
 import { MicInput } from "../adapters/MicInput";
 import { MidiInput } from "../adapters/MidiInput";
 import { describeError } from "./format";
@@ -14,8 +15,8 @@ export interface ProtocolEntry {
 const PROTOCOL_LINES = 4;
 
 interface Options {
-  /** Where every played note goes. */
-  onNote: (midi: number) => void;
+  /** Where every played note goes, with the time of its strike. */
+  onNote: (note: PlayedNote) => void;
   /** What the engine waits for, for the protocol. */
   expected: () => number[];
   /** True while a passage plays back. Keys pressed then are ignored. */
@@ -125,7 +126,7 @@ export function useInputs(options: Options) {
       const expected = opts.current.expected();
       setProtocol((entries) => [{ heard, expected }, ...entries].slice(0, PROTOCOL_LINES));
     });
-    const offNote = mic.onNoteOn((note) => opts.current.onNote(note.midi));
+    const offNote = mic.onNoteOn((note) => opts.current.onNote(note));
     unlistenMicRef.current = () => {
       offHeard();
       offNote();
@@ -163,7 +164,7 @@ export function useInputs(options: Options) {
 
     const offNote = midi.onNoteOn((note) => {
       if (opts.current.playingBack()) return;
-      opts.current.onNote(note.midi);
+      opts.current.onNote(note);
     });
     const offDevices = midi.onDevicesChange(setMidiDevices);
     unlistenMidiRef.current = () => {

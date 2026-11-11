@@ -1,7 +1,7 @@
 import { OpenSheetMusicDisplay } from "opensheetmusicdisplay";
 import { pedalEndAt, pedalSpans, type PedalMark } from "../core/pedal";
 import { FALLBACK_BPM } from "../core/playback";
-import type { ExpectedNote, Score, ScoreStep } from "../core/score";
+import type { ExpectedNote, Meter, Score, ScoreStep } from "../core/score";
 
 /**
  * Everything the app does with OpenSheetMusicDisplay.
@@ -52,6 +52,7 @@ export function extractScore(
   // Beethoven leaves it undefined while every one of its measures says 180.
   const measures = osmd.Sheet?.SourceMeasures ?? [];
   const pedals = pedalSpans(pedalMarks(osmd));
+  const meters = metersOf(measures as unknown as MeasureTime[]);
 
   // Two layout reads for the whole walk; everything after this is arithmetic.
   const sheetWidth = host?.querySelector("svg")?.getBoundingClientRect().width ?? 0;
@@ -77,6 +78,7 @@ export function extractScore(
       notes: notesUnderCursor(cursor),
       onset,
       bpm: tempoOf(measures[measure - 1]),
+      meter: meters[measure - 1],
       pedalUntil: lift === null ? null : onset + (lift - source),
     });
     anchors.push(sheetWidth > 0 ? cursorFraction(cursor, sheetWidth, cursorWidth) : 0);
@@ -190,6 +192,41 @@ function tempoOf(measure: { TempoInBPM?: number } | undefined): number {
   return typeof bpm === "number" && Number.isFinite(bpm) && bpm > 0 ? bpm : FALLBACK_BPM;
 }
 
+/** OSMD's `RhythmSymbolEnum.CUT`: the time signature is drawn as ¢. */
+const CUT = 2;
+
+interface MeasureTime {
+  ActiveTimeSignature?: { Numerator?: number; Denominator?: number };
+  FirstInstructionsStaffEntries?: Array<{ Instructions?: unknown[] } | undefined>;
+}
+
+/**
+ * The time signature of every measure, by index.
+ *
+ * The numbers are on every measure, but the symbol only where a time
+ * signature is written, so it is carried forward from there. The symbol
+ * matters where it disagrees with the numbers: the Moonlight file draws ¢ and
+ * says 4/4. Beethoven wrote alla breve, two half notes to the bar, and that is
+ * what a pianist reading ¢ counts — so a ¢ over a whole-note bar is 2/2.
+ */
+function metersOf(measures: MeasureTime[]): Array<Meter | undefined> {
+  let cut = false;
+  return measures.map((measure) => {
+    for (const entry of measure.FirstInstructionsStaffEntries ?? []) {
+      for (const instruction of entry?.Instructions ?? []) {
+        const symbol = (instruction as { SymbolEnum?: number; Rhythm?: unknown }).SymbolEnum;
+        if (typeof symbol === "number" && "Rhythm" in (instruction as object)) cut = symbol === CUT;
+      }
+    }
+
+    const beats = measure.ActiveTimeSignature?.Numerator;
+    const beatType = measure.ActiveTimeSignature?.Denominator;
+    if (!beats || !beatType || !Number.isFinite(beats) || !Number.isFinite(beatType)) return undefined;
+    if (cut && beats === beatType) return { beats: 2, beatType: 2 };
+    return { beats, beatType };
+  });
+}
+
 function cursorElement(cursor: Cursor): HTMLElement | undefined {
   return (cursor as unknown as { cursorElement?: HTMLElement }).cursorElement;
 }
@@ -285,6 +322,9 @@ export class ScoreView {
   /** The bars of the loop, if one is set, and the element that tints them. */
   private loopBars: { from: number; to: number } | null = null;
   private band: HTMLElement | null = null;
+  /** The marks a run in tempo left, by step, and the layer that holds them. */
+  private marks: ReadonlyMap<number, Mark> | null = null;
+  private markLayer: HTMLElement | null = null;
 
   constructor(host: HTMLElement, viewport: HTMLElement) {
     this.host = host;
@@ -417,6 +457,19 @@ export class ScoreView {
     this.drawLoop();
   }
 
+  /**
+   * Puts a sign above each step a run in tempo found fault with — ✗ for a
+   * wrong note, ○ for a missed one — or takes them all away when given null.
+   *
+   * Above the system rather than on the notes, so nothing on the page is
+   * covered, and a shape rather than a colour, so it reads without telling
+   * red from green. Placed where the highlight stands on that step.
+   */
+  markSteps(marks: ReadonlyMap<number, Mark> | null): void {
+    this.marks = marks && marks.size > 0 ? marks : null;
+    this.drawMarks();
+  }
+
   /** The step nearest a point on screen, for a tap; null before anything is drawn. */
   stepAt(clientX: number): number | null {
     const svg = this.host.querySelector("svg");
@@ -440,6 +493,35 @@ export class ScoreView {
     this.stale = true;
     // A render builds the page anew, and the bars move with the zoom.
     this.drawLoop();
+    this.drawMarks();
+  }
+
+  private drawMarks(): void {
+    const marks = this.marks;
+    const svg = this.host.querySelector("svg");
+    const page = svg?.parentElement;
+    const width = svg?.getBoundingClientRect().width ?? 0;
+
+    if (!marks || !page || width <= 0) {
+      this.markLayer?.remove();
+      this.markLayer = null;
+      return;
+    }
+
+    const layer = (this.markLayer ??= document.createElement("div"));
+    layer.className = "step-marks";
+    layer.replaceChildren(
+      ...[...marks].map(([step, mark]) => {
+        const sign = document.createElement("span");
+        sign.className = `step-mark ${mark}`;
+        sign.textContent = mark === "wrong" ? "✗" : "○";
+        sign.title = mark === "wrong" ? "falsch" : "verpasst";
+        // Anchors are fractions of the line, so they hold at any zoom.
+        sign.style.left = `${(this.anchors[step] ?? 0) * width}px`;
+        return sign;
+      }),
+    );
+    if (layer.parentElement !== page) page.appendChild(layer);
   }
 
   private drawLoop(): void {
@@ -475,6 +557,9 @@ export class ScoreView {
     }
   }
 }
+
+/** What a run in tempo found wrong with a step. */
+export type Mark = "wrong" | "missed";
 
 /** The part of OSMD's GraphicalMeasure that says where a bar sits. */
 interface MeasureBox {

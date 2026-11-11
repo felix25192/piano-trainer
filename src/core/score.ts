@@ -55,6 +55,17 @@ export interface ScoreStep {
    * worse than no pedal.
    */
   pedalUntil: number | null;
+  /**
+   * The time signature in force at this step, as MusicXML writes it: 3/4 is
+   * three beats of the type 4. Absent when the file names none.
+   */
+  meter?: Meter;
+}
+
+/** A time signature, in MusicXML's own terms: `<beats>` over `<beat-type>`. */
+export interface Meter {
+  beats: number;
+  beatType: number;
 }
 
 export interface Score {

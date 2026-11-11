@@ -30,6 +30,9 @@ No accounts, no gamification, no pressure.
   contrary motion, with fingerings for major.
 - **Hands separately or together.** A tied note is asked for once, where it is
   struck.
+- **Play through in tempo**, the way sight-reading goes: a visible count-in,
+  then the highlight moves on by the clock, and the steps that went wrong or
+  were missed get a sign — ✗ or ○, shapes rather than colours.
 - **Loop a few bars** until they read: the bars are tinted, and past the last
   note the highlight goes back to the first. Repeats in the score are followed
   the way a pianist would.

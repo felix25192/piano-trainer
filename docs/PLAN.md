@@ -28,7 +28,7 @@ Linie. Spike A ist in Safari auf dem iPad bestanden, gemessen und nicht
 vermutet.
 
 Veroeffentlicht unter <https://felix25192.github.io/piano-trainer/>, bei jedem
-Push auf `main` automatisch aktualisiert. 305 Tests.
+Push auf `main` automatisch aktualisiert. 341 Tests.
 
 **Seit dem 10.11. spielt auch ein MIDI-Keyboard die App**, beide Haende
 zugleich, am Rechner in Chrome und Edge. Am echten Kawai ist das noch nicht
@@ -36,8 +36,11 @@ ausprobiert, das ist Teil E der Testrunde.
 
 **Seit dem 11.11. laesst sich eine Spanne von Takten wiederholen**, im
 Takt-Panel gewaehlt. Von den Schritten nach dem Abschnitt vom 10.11. sind
-damit 2 bis 4 erledigt; offen sind die Testrunde, der Tempo-Modus und die
-zwei Haende ueber das Mikrofon.
+damit 2 bis 4 erledigt.
+
+**Seit dem 11.11. gibt es den Tempo-Modus**: Die Markierung laeuft im Tempo
+weiter, und wo es nicht stimmte, bleibt ein Zeichen stehen. Offen sind damit
+nur noch die Testrunde und die zwei Haende ueber das Mikrofon.
 
 **Als Naechstes.** Der Mikrofonknopf ist gebaut, aber am Instrument noch nie
 ausprobiert - das ist der offene Faden. Am 24.09. hat sich gezeigt, dass er in
@@ -2212,3 +2215,87 @@ Am Mikrofon ist der Tempo-Modus nur so gut wie die Erkennung: einstimmig,
 also eine Hand, und mit Pedal hoert es am Pruefstand nur 12 von 26 Toenen.
 Was es nicht hoert, erscheint als verpasst und ist von einem echten
 Versaeumnis nicht zu unterscheiden. Mit MIDI gilt das nicht.
+
+## Der Tempo-Modus, gebaut (11.11.2026)
+
+Nach dem Entwurf von heute Vormittag, in einem Zug. Was davon abweicht oder
+dazukam, steht hier.
+
+### Was es geworden ist
+
+- `core/tempoRun.ts` faellt die Urteile nach den fuenf Regeln des Entwurfs,
+  mit 19 Tests, die die Regeln einzeln durchgehen: zu frueh, gerade noch
+  frueh genug, spaet im eigenen Fenster, halber Akkord, fremder Ton neben dem
+  richtigen, andere Hand, Pause, Bindebogen an der ersten Stelle und mitten
+  im Stueck, Nachfrist fuer die spaete Antwort des Mikrofons.
+- `core/pulse.ts` sagt, wo die Schlaege liegen. `timeline` in
+  `core/playback.ts` rechnet sie in Sekunden um, und zwar mit derselben
+  Rechnung wie die Noten. Schlag und Note an derselben Stelle der Partitur
+  fallen deshalb auf dieselbe Sekunde, auch ueber einen Tempowechsel hinweg.
+- Der Port meldet den Anschlag auf der Uhr der Seite. MIDI nimmt dafuer den
+  Zeitstempel des Ereignisses, das Mikrofon den Moment des Anschlags.
+- Der Knopf "Tempo 60" unten zaehlt ein und zeigt danach den laufenden
+  Schlag, den Taktanfang groesser. Das Tempo stellt man in den Einstellungen
+  ein.
+
+### Wie gezaehlt wird
+
+Der Entwurf sagte "ein Takt der Taktart". Das reicht nur fuer einen Einsatz
+auf dem Taktanfang. Ein Pianist, der auf drei einsetzt, zaehlt einen ganzen
+Takt und dann die Schlaege bis zum Einsatz: "1 2 3 4 | 1 2". So zaehlt die
+App jetzt auch, und genauso vor einem Auftakt. Die Danse villageoise beginnt
+mit einer Viertel im Dreivierteltakt; die Datei bestaetigt es, Takt 1 ist eine
+Viertel lang. Die App zaehlt "1 2 3 | 1 2" und laesst auf drei einsetzen.
+
+Zusammengesetzte Taktarten werden in punktierten Schlaegen gezaehlt: 6/8 in
+zwei, 9/8 in drei, 12/8 in vier. So zaehlt ein Pianist und so schlaegt ein
+Dirigent.
+
+Ein Fund dabei: Die Datei der Mondscheinsonate zeichnet ¢, schreibt als Zahlen
+aber 4/4. Beethoven hat alla breve notiert, und wer ¢ liest, zaehlt zwei
+Halbe. OSMD legt das Zeichen nur in dem Takt ab, in dem die Taktart steht.
+Der Adapter fuehrt es deshalb ueber die folgenden Takte mit: ¢ ueber einem
+ganzen Takt heisst 2/2. Gegengeprueft: Die vier Stuecke in C (Praeludium,
+Clementi, Mozart, Chopin) zaehlen weiter vier.
+
+Waehrend des Durchlaufs liegt der Puls auf einem Raster aus Taktanfaengen.
+Ein Takt, der kuerzer ist als seine Taktart, wird von hinten gezaehlt; ein
+Takt, der zweimal hintereinander kommt, wie bei einer Wiederholung eines
+einzelnen Takts, zaehlt zweimal.
+
+### Probe
+
+341 Tests, 36 davon neu. Im Browser mit nachgestelltem Kawai, Tonleiter C-Dur
+beider Haende bei 60, also eine Sekunde je Viertel:
+
+- Ohne Instrument startet nichts, die App sagt warum.
+- Eingezaehlt wird "1 2 3 4" im Sekundenabstand, danach laeuft die
+  Markierung im Tempo.
+- Absichtlich gespielt: richtig, falscher Ton, nichts, halber Akkord, spaet im
+  Fenster, etwas zu frueh, richtig mit fremdem Ton dazu. Ergebnis: ✗ ○ ○ an
+  den drei Stellen dazwischen, ✗ an der letzten, nichts an den uebrigen.
+  Genau wie geplant.
+- Anhalten: Die Markierung steht wieder am Anfang, die Zeichen bleiben. Sie
+  ueberstehen eine Groessenaenderung, ein neuer Durchlauf raeumt sie weg,
+  Antippen auch.
+- In einer Schleife ueber Takt 1 endet der Durchlauf von selbst nach 4,25 s
+  (vier Viertel und die Nachfrist), dann wieder am Anfang. Ein stiller
+  Durchlauf gibt vier ○.
+- Waehrend des Durchlaufs sind Von vorn, Vorspielen und Weiter gesperrt, die
+  Leertaste bewegt nichts.
+- Einzaehlen in allen sieben Stuecken: Menuett "1 2 3", Danse "1 2 3 1 2",
+  Mondscheinsonate "1 2" in Halben, die uebrigen "1 2 3 4".
+- Der Warte-Modus ausserhalb eines Durchlaufs ist unveraendert.
+- Keine Fehler in der Konsole. An der Audio-Sitzung hat sich nichts
+  geaendert, grep zeigt dieselben zwei erlaubten Treffer.
+
+Nebenbei: `npx` hing heute bei jedem Aufruf. Die Werkzeuge direkt ueber
+node.exe aufzurufen ging; `CLAUDE.md` nennt jetzt beide Wege.
+
+### Ehrlich dazu
+
+Am Instrument ungeprueft. Wie weit der Zeitstempel des Mikrofons hinter dem
+echten Anschlag liegt, ist nicht gemessen. Fuer den grosszuegigen Rhythmus
+ist das unkritisch, fuer einen strengen waere es die erste Messung. Und am
+Mikrofon gilt weiter: eine Hand, und was das Pedal verdeckt, erscheint als
+verpasst.

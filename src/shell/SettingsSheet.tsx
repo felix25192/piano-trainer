@@ -1,5 +1,6 @@
 import { Sheet } from "./Sheet";
 import { TEMPO_FACTORS } from "./usePlayback";
+import { TEMPO_MAX, TEMPO_MIN, TEMPO_STEP } from "./useTempoRun";
 import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from "./useScoreView";
 
 interface Props {
@@ -16,6 +17,9 @@ interface Props {
   protocol: { on: boolean; switch: (on: boolean) => void } | null;
   tempoFactor: number;
   onTempo: (factor: number) => void;
+  /** Quarters per minute for a run in tempo. */
+  runBpm: number;
+  onRunBpm: (bpm: number) => void;
   audioSupported: boolean;
   /**
    * The tempo in force where the highlight stands, so the setting can name
@@ -95,6 +99,32 @@ export function SettingsSheet(props: Props) {
           </p>
         </div>
       )}
+
+      <div className="field">
+        <span>Tempo beim Spielen im Tempo</span>
+        <div className="stepper">
+          <button
+            onClick={() => props.onRunBpm(props.runBpm - TEMPO_STEP)}
+            disabled={props.runBpm <= TEMPO_MIN}
+            aria-label="Langsamer"
+          >
+            −
+          </button>
+          <output>{props.runBpm}</output>
+          <button
+            onClick={() => props.onRunBpm(props.runBpm + TEMPO_STEP)}
+            disabled={props.runBpm >= TEMPO_MAX}
+            aria-label="Schneller"
+          >
+            +
+          </button>
+        </div>
+        <p className="hint">
+          Viertel pro Minute, dort wo der Durchlauf beginnt. Wechselt das Stück
+          das Tempo, bleibt das Verhältnis. Die notierten Tempi sind für den
+          Vortrag gedacht, nicht zum Lesen vom Blatt.
+        </p>
+      </div>
 
       <div className="field">
         <span>Tempo beim Vorspielen</span>

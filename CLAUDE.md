@@ -56,6 +56,9 @@ src/Home.tsx    The start screen. Reports which mode was tapped; knows
 - `core/hearing.ts` — **the microphone loop**: a frame of samples in, a
   struck note out. The bench, the tests and the app all run this one
 - `core/NoteOutput.ts` — **the port** every sound output implements
+- `core/tempoRun.ts` — judges a run in tempo: a window per step, a verdict
+  after it. The rules are numbered in `docs/PLAN.md`, 11.11.2026
+- `core/pulse.ts` — where the beats fall: the count-in and the pulse
 - `adapters/osmdScore.ts` — the only file allowed to know OSMD's object graph:
   `ScoreView` draws and moves the highlight, `extractScore` reads
 - `adapters/MidiInput.ts` — Web MIDI: exact, both hands. Chrome and Edge on
@@ -83,10 +86,20 @@ export PATH="/c/Program Files/nodejs:$PATH"
 ```
 
 ```bash
-npx vitest run          # 305 tests
+npx vitest run          # 341 tests
 npx tsc -b --noEmit     # types
 npx oxlint              # lint; silence means clean
 npm run build
+```
+
+`npx` itself can hang here, on a network check. If a run does not come back,
+call the tools directly before suspecting the code:
+
+```bash
+"/c/Program Files/nodejs/node.exe" node_modules/vitest/vitest.mjs run
+"/c/Program Files/nodejs/node.exe" node_modules/typescript/bin/tsc -b --noEmit
+node_modules/.bin/oxlint
+"/c/Program Files/nodejs/node.exe" node_modules/vite/bin/vite.js build
 ```
 
 Dev server, started detached because `npm` resolution is unreliable here:
@@ -202,6 +215,26 @@ next. Steps follow the route with repeats, so a bar can come twice;
 `loopSteps` in `core/score.ts` decides which pass a loop means, and its tests
 name the cases: a repeat back out of the span, a repeat inside it, first and
 second endings.
+
+**A run in tempo** keeps going whatever is played, which is what sight-reading
+is. The tempo button counts in, visibly — sound and microphone cannot share
+the device — and the highlight then moves by the clock at the quarters per
+minute set in the settings, tempo changes kept in proportion. Each step that
+asks for something gets a window from a little before it to a little before
+the next, and a verdict after it: ✗ wrong, ○ missed, nothing for a hit. The
+signs stay above the steps until the next run or a tap. The count-in is a
+whole bar of the time signature plus the beats before the entry, so an
+upbeat on three in 3/4 hears "1 2 3 | 1 2" — the Danse villageoise does — and
+compound meters count dotted beats. The Moonlight's file draws ¢ but says
+4/4; the adapter follows the sign, as a pianist does, and counts two halves.
+Inside a loop a run is one pass. With the microphone it is only as good as
+the hearing: one hand, and what the pedal hides comes out as missed.
+
+For this the input port carries a common clock: `PlayedNote.time` is the
+strike on the page's clock, `performance.now()` — MIDI from the event's own
+timestamp, the microphone from the strike rather than the moment it was
+recognised. How far the microphone's timestamp trails the hammer is
+unmeasured.
 
 A tied note is asked for once, where it is struck, and passed over where it
 is held: a tie is one sound. Striking it again counts as a misreading. The
@@ -320,7 +353,9 @@ the music. The order of work, and the numbers that decide when two hands count
 as working, are in `docs/PLAN.md` under that date — fixed before the first
 measurement at an instrument, so that the target cannot drift to wherever the
 results land. The test round (`docs/TESTRUNDE.md`) has not run yet. MIDI is
-connected, step 2 of that order, but has never met the Kawai.
+connected, step 2 of that order, but has never met the Kawai. Steps 3 to 5
+— the clean-up, the loop, the tempo mode — are done; left are the test round
+and both hands through the microphone.
 
 - **Spike A, from the home screen.** In Safari it passed — see What works.
   Launched from the home screen it is still untested, which is where the
