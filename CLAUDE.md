@@ -59,6 +59,11 @@ src/Home.tsx    The start screen. Reports which mode was tapped; knows
 - `core/tempoRun.ts` — judges a run in tempo: a window per step, a verdict
   after it. The rules are numbered in `docs/PLAN.md`, 11.11.2026
 - `core/pulse.ts` — where the beats fall: the count-in and the pulse
+- `core/stitch.ts` — a recording put back together, exactly, from the
+  overlapping windows the microphone loop reads
+- `core/wav.ts` — samples into a WAV file
+- `core/sessionLog.ts` — what a listening session heard and what MIDI
+  witnessed, and that as text to paste into a conversation
 - `adapters/osmdScore.ts` — the only file allowed to know OSMD's object graph:
   `ScoreView` draws and moves the highlight, `extractScore` reads
 - `adapters/MidiInput.ts` — Web MIDI: exact, both hands. Chrome and Edge on
@@ -86,7 +91,7 @@ export PATH="/c/Program Files/nodejs:$PATH"
 ```
 
 ```bash
-npx vitest run          # 341 tests
+npx vitest run          # 354 tests
 npx tsc -b --noEmit     # types
 npx oxlint              # lint; silence means clean
 npm run build
@@ -335,6 +340,19 @@ next note. MIDI holds no audio, so it stays on through playback (keys pressed
 meanwhile are ignored) and across the home screen. A keyboard switched off and
 on again is picked up by itself. Verified in the app against a stand-in for
 Web MIDI, not yet against the Kawai.
+
+**For the test round the app records what it hears.** With "Mitschnitt" on in
+the settings, every listening session becomes a WAV of exactly the samples
+the microphone loop read — stitched from its overlapping windows by exact
+comparison, so no second tap on the audio graph was needed and the six audio
+points are untouched — and a JSON log of every strike, what was expected
+then and where, on the same time line. A MIDI keyboard may stay connected
+meanwhile as a *witness*: the one exception to one input at a time, since it
+writes keys and pedal into the log and hands nothing to the engine. The log
+can also be copied as text from the settings. Takes live in memory, twelve at
+most, until shared; they belong in `lab/local/testrunde/`, which git ignores.
+Verified with a 441 Hz sine for a microphone: 5346 periods in a row, every
+one regular, the mean period exact to four places, no seam to be found.
 
 The expected notes are deliberately **not** displayed. Naming them turns the
 exercise into reading text. A wrong note stops the highlight and marks it

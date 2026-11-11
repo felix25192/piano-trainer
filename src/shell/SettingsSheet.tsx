@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { Sheet } from "./Sheet";
+import type { Take } from "./useInputs";
+import { minutes } from "./format";
 import { TEMPO_FACTORS } from "./usePlayback";
 import { TEMPO_MAX, TEMPO_MIN, TEMPO_STEP } from "./useTempoRun";
 import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from "./useScoreView";
@@ -15,6 +18,17 @@ interface Props {
   midiDevices: string[] | null | undefined;
   /** Shown only where a microphone can be opened at all. */
   protocol: { on: boolean; switch: (on: boolean) => void } | null;
+  /** Recording for the test round; null where there is no microphone. */
+  recording: {
+    on: boolean;
+    switch: (on: boolean) => void;
+    takes: Take[];
+    hasLog: boolean;
+    copyLog: () => Promise<boolean>;
+  } | null;
+  /** True while the microphone listens: the recording switch waits until it stops. */
+  listening: boolean;
+  onShare: (take: Take) => void;
   tempoFactor: number;
   onTempo: (factor: number) => void;
   /** Quarters per minute for a run in tempo. */
@@ -31,7 +45,9 @@ interface Props {
 }
 
 export function SettingsSheet(props: Props) {
-  const { autoFit, fingerings, zoom, midiDevices, protocol, tempoFactor, currentBpm } = props;
+  const { autoFit, fingerings, zoom, midiDevices, protocol, recording, tempoFactor, currentBpm } = props;
+  /** What became of the last press of "copy", shown until the panel closes. */
+  const [copied, setCopied] = useState<"done" | "failed" | null>(null);
 
   return (
     <Sheet label="Einstellungen" title="Einstellungen" onClose={props.onClose}>
@@ -97,6 +113,52 @@ export function SettingsSheet(props: Props) {
             hat — und dafür auch die erwarteten Töne. Zur Fehlersuche am
             Instrument, nicht zum Üben.
           </p>
+          {recording && (
+            <button
+              className="add-file"
+              disabled={!recording.hasLog}
+              onClick={async () => setCopied((await recording.copyLog()) ? "done" : "failed")}
+            >
+              <span>
+                {copied === "done"
+                  ? "Protokoll kopiert"
+                  : copied === "failed"
+                    ? "Kopieren ging nicht"
+                    : "Protokoll der letzten Sitzung kopieren"}
+              </span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {recording && (
+        <div className="field">
+          <label className="row-toggle">
+            Mitschnitt für die Testrunde
+            <input
+              type="checkbox"
+              checked={recording.on}
+              disabled={props.listening}
+              onChange={(e) => recording.switch(e.target.checked)}
+            />
+          </label>
+          <p className="hint">
+            {props.listening
+              ? "Lässt sich umstellen, sobald das Mikrofon aus ist: Eine Sitzung wird ganz aufgenommen oder gar nicht."
+              : "Solange das Mikrofon zuhört, wird aufgenommen, was es hört, mit dem ganzen Protokoll dazu. Ist dabei ein MIDI-Keyboard angeschlossen, schreibt es nur mit. Alles bleibt auf diesem Gerät, bis du es teilst."}
+          </p>
+          {recording.takes.length > 0 && (
+            <ul className="takes">
+              {recording.takes.map((take) => (
+                <li key={take.id}>
+                  <span>
+                    {minutes(take.seconds)} · {(take.wav.byteLength / 1e6).toFixed(1)} MB
+                  </span>
+                  <button onClick={() => props.onShare(take)}>Teilen</button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 

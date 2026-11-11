@@ -7,8 +7,8 @@ interface Props {
   finished: boolean;
   playback: PlaybackState;
   audioSupported: boolean;
-  mic: { supported: boolean; on: boolean; toggle: () => void };
-  midi: { supported: boolean; devices: string[] | null; toggle: () => void };
+  mic: { supported: boolean; on: boolean; recording: boolean; toggle: () => void };
+  midi: { supported: boolean; devices: string[] | null; witness: boolean; toggle: () => void };
   /** A run in tempo: whether one is going, its tempo, and the beat to show. */
   tempo: { running: boolean; bpm: number; beat: ShownBeat | null; toggle: () => void };
   onRestart: () => void;
@@ -76,6 +76,12 @@ export function ActionBar({ busy, finished, playback, audioSupported, mic, midi,
             <path d="M12 18v3" />
           </svg>
           <span>Mikrofon</span>
+          {/* Recording what it hears, for the test round. */}
+          {mic.recording && (
+            <span className="rec" title="Mitschnitt läuft" aria-label="Mitschnitt läuft">
+              ●
+            </span>
+          )}
         </button>
       )}
 
@@ -88,8 +94,14 @@ export function ActionBar({ busy, finished, playback, audioSupported, mic, midi,
           className={"input" + (midiOn ? " on" : "")}
           onClick={midi.toggle}
           aria-pressed={midiOn}
-          aria-label={midiOn ? `MIDI ausschalten (${midiLabel})` : "Mit MIDI-Keyboard spielen"}
-          title={midiOn ? `MIDI: ${midiLabel}` : "Mit MIDI-Keyboard spielen"}
+          aria-label={
+            midi.witness
+              ? `MIDI schreibt mit (${midiLabel}), ausschalten`
+              : midiOn
+                ? `MIDI ausschalten (${midiLabel})`
+                : "Mit MIDI-Keyboard spielen"
+          }
+          title={midi.witness ? "MIDI schreibt nur mit, das Mikrofon spielt" : midiOn ? `MIDI: ${midiLabel}` : "Mit MIDI-Keyboard spielen"}
           disabled={busy}
         >
           {/* Four white keys F G A B, so the three black ones are right. */}
@@ -100,7 +112,7 @@ export function ActionBar({ busy, finished, playback, audioSupported, mic, midi,
             <rect x="10.7" y="5" width="2.6" height="8" fill="currentColor" />
             <rect x="15.2" y="5" width="2.6" height="8" fill="currentColor" />
           </svg>
-          <span>MIDI</span>
+          <span>{midi.witness ? "MIDI schreibt mit" : "MIDI"}</span>
         </button>
       )}
 

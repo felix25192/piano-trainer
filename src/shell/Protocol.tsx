@@ -1,18 +1,11 @@
-import type { Heard, Refusal } from "../core/hearing";
+import type { Heard } from "../core/hearing";
 import { keyLabel } from "../core/pitch";
-import type { ProtocolEntry } from "./useInputs";
+import { REFUSALS, verdictOf } from "../core/sessionLog";
 
-const REFUSALS: Record<Refusal, string> = {
-  "no-pitch": "keine Tonhöhe",
-  unclear: "unklar",
-  "between-keys": "zwischen zwei Tasten",
-  "off-keyboard": "außerhalb der Tastatur",
-};
-
-/** How a line is coloured: as the engine will take it. */
-function verdictOf(heard: Heard, expected: number[]): string {
-  if (heard.midi === null) return "refused";
-  return expected.includes(heard.midi) ? "right" : "wrong";
+/** A line of the strip: what was heard, and what was wanted then. */
+export interface ProtocolEntry {
+  heard: Heard;
+  expected: number[];
 }
 
 /**

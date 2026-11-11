@@ -110,6 +110,22 @@ describe("MidiInput", () => {
     expect(Math.abs(notes[1].time - performance.now())).toBeLessThan(1000);
   });
 
+  it("reports keys going down and up, and the pedal, for a witness", async () => {
+    const midi = new MidiInput();
+    const events: string[] = [];
+    midi.onKeyEvent((e) => events.push(e.kind === "pedal" ? `pedal ${e.down}` : `${e.kind} ${e.midi}`));
+    await midi.start();
+
+    kawai.sendAt(10, 0x90, 60, 64);
+    kawai.sendAt(11, 0xb0, 64, 127);
+    kawai.sendAt(12, 0x90, 60, 0); // the Kawai's way of letting go
+    kawai.sendAt(13, 0x80, 62, 40); // another keyboard's way
+    kawai.sendAt(14, 0xb0, 64, 0);
+    kawai.sendAt(15, 0xb0, 1, 90); // modulation: not ours
+
+    expect(events).toEqual(["down 60", "pedal true", "up 60", "up 62", "pedal false"]);
+  });
+
   it("takes a key on any channel", async () => {
     const { heard } = await started();
     kawai.send(0x93, 67, 80);

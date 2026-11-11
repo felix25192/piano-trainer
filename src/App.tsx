@@ -6,14 +6,15 @@ import Home, { type ModeId } from "./Home";
 import { exerciseSelection } from "./pieces";
 import { ActionBar } from "./shell/ActionBar";
 import { ExerciseSheet, type Draft } from "./shell/ExerciseSheet";
-import { clamp, round } from "./shell/format";
+import { clamp, minutes, round } from "./shell/format";
+import { shareFiles } from "./shell/share";
 import { MeasuresSheet } from "./shell/MeasuresSheet";
 import { PiecesSheet } from "./shell/PiecesSheet";
 import { Protocol } from "./shell/Protocol";
 import { ScoreArea } from "./shell/ScoreArea";
 import { SettingsSheet } from "./shell/SettingsSheet";
 import { TopBar } from "./shell/TopBar";
-import { useInputs } from "./shell/useInputs";
+import { useInputs, type Take } from "./shell/useInputs";
 import { usePieces } from "./shell/usePieces";
 import { usePlayback } from "./shell/usePlayback";
 import { useScoreView, ZOOM_MAX, ZOOM_MIN, type Resume } from "./shell/useScoreView";
@@ -62,6 +63,8 @@ export default function App() {
   const [tempoFactor, setTempoFactor] = useState(1);
   /** Quarters per minute for a run in tempo. */
   const [runBpm, setRunBpm] = useState(TEMPO_DEFAULT);
+  /** The newest recording already offered for sharing, so the offer is made once. */
+  const [offeredTake, setOfferedTake] = useState(0);
   /** Why a run in tempo did not start, until the next try. */
   const [runNotice, setRunNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>({
@@ -110,6 +113,14 @@ export default function App() {
     // with the time they were struck.
     onNote: (note) => (tempo.isActive() ? tempo.noteOn(note) : practice.play(note.midi)),
     expected: practice.remaining,
+    where: () => {
+      const step = practice.score?.steps[practice.at()];
+      return step ? { measure: step.measure, step: step.index } : null;
+    },
+    describe: () => [
+      `Stück: ${pieces.selected.label}`,
+      `Hände: ${{ both: "beide", right: "rechts", left: "links" }[practice.hands]}`,
+    ],
     playingBack: playback.isActive,
     beforeListening: () => {
       playback.stop();
@@ -268,6 +279,19 @@ export default function App() {
   }
 
   const errors = [practice.error, playback.error, inputs.mic.error, inputs.midi.error];
+  const newTake = inputs.recording.takes[inputs.recording.takes.length - 1];
+
+  /** Offers a recording to the share sheet: the sound and the log beside it. */
+  function shareTake(take: Take) {
+    setOfferedTake((seen) => Math.max(seen, take.id));
+    void shareFiles(
+      [
+        new File([take.wav], `${take.name}.wav`, { type: "audio/wav" }),
+        new File([take.json], `${take.name}.json`, { type: "application/json" }),
+      ],
+      take.name,
+    );
+  }
   const runningNow = tempo.state !== "idle";
   const close = () => setSheet(null);
 
@@ -290,6 +314,15 @@ export default function App() {
       {errors.map((error, i) => error && <pre key={i} className="error-box">{error}</pre>)}
 
       {runNotice && !runningNow && <p className="notice">{runNotice}</p>}
+
+      {/* A recording that just ended, offered once; the settings keep the rest. */}
+      {newTake && newTake.id > offeredTake && !inputs.mic.on && (
+        <div className="notice take">
+          <span>Mitschnitt fertig: {minutes(newTake.seconds)}.</span>
+          <button onClick={() => shareTake(newTake)}>Teilen</button>
+          <button onClick={() => setOfferedTake(newTake.id)}>Später</button>
+        </div>
+      )}
 
       {inputs.midi.devices?.length === 0 && (
         <p className="notice">
@@ -387,6 +420,9 @@ export default function App() {
           onZoom={setZoomManually}
           midiDevices={inputs.midi.supported ? inputs.midi.devices : undefined}
           protocol={inputs.mic.supported ? inputs.protocol : null}
+          recording={inputs.mic.supported ? inputs.recording : null}
+          listening={inputs.mic.on}
+          onShare={shareTake}
           tempoFactor={tempoFactor}
           onTempo={changeTempo}
           runBpm={runBpm}

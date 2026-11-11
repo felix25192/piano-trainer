@@ -744,3 +744,52 @@ button, .topbar, .sheet { -webkit-user-select: none; user-select: none; }
 
 .step-mark.wrong { color: #c62828; }
 .step-mark.missed { color: #5f6b7a; }
+
+/* ---------- recording for the test round ---------- */
+
+/* On the microphone button while what it hears is recorded. */
+.actions .rec {
+  color: #ff5a5a;
+  font-size: 12px;
+  animation: rec-blink 1.6s ease-in-out infinite;
+}
+
+@keyframes rec-blink {
+  50% { opacity: .35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .actions .rec { animation: none; }
+}
+
+/* The recordings kept, each with its way out. */
+.takes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.takes li,
+.notice.take {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.takes li span,
+.notice.take span { flex: 1; }
+
+.takes button,
+.notice.take button {
+  min-height: 36px;
+  padding: 0 14px;
+  background: var(--raised);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font: 14px system-ui;
+  cursor: pointer;
+}

@@ -28,11 +28,19 @@ const FRAME_MS = 10;
 /** Every strike, including the ones that were refused — for the protocol. */
 export type HeardListener = (heard: Heard) => void;
 
+/**
+ * Every window the loop looks at, and when, in seconds since listening began.
+ * The window is reused for the next look: read it at once, do not keep it.
+ */
+export type FrameListener = (window: Float32Array, at: number) => void;
+
 export class MicInput implements NoteInputSource {
   readonly name = "Mikrofon";
 
   private listeners = new Set<NoteListener>();
   private heardListeners = new Set<HeardListener>();
+  private frameListeners = new Set<FrameListener>();
+  private rate = 0;
   private hearing: Hearing | null = null;
   private analyser: AnalyserNode | null = null;
   private buffer = new Float32Array(WINDOW);
@@ -62,6 +70,7 @@ export class MicInput implements NoteInputSource {
     this.analyser = analyser;
     this.buffer = new Float32Array(analyser.fftSize);
     this.hearing = new Hearing(ctx.sampleRate);
+    this.rate = ctx.sampleRate;
     this.startedAt = performance.now();
 
     this.timer = setInterval(() => this.frame(), FRAME_MS);
@@ -77,6 +86,27 @@ export class MicInput implements NoteInputSource {
 
     // Only hand the device back if it is ours; playback may have taken it.
     if (audioSession.current === "listening") void audioSession.release();
+  }
+
+  /**
+   * Every window the loop reads, for a recording of exactly what it heard.
+   * Not part of the port either; see `core/stitch.ts` for why it is enough.
+   */
+  onFrame(listener: FrameListener): () => void {
+    this.frameListeners.add(listener);
+    return () => {
+      this.frameListeners.delete(listener);
+    };
+  }
+
+  /** Samples per second of what the loop reads; 0 before listening. */
+  get sampleRate(): number {
+    return this.rate;
+  }
+
+  /** When listening began, on the page's clock. Strikes are counted from here. */
+  get listeningSince(): number {
+    return this.startedAt;
   }
 
   onNoteOn(listener: NoteListener): () => void {
@@ -106,7 +136,9 @@ export class MicInput implements NoteInputSource {
     if (!analyser || !hearing) return;
 
     analyser.getFloatTimeDomainData(this.buffer);
-    const heard = hearing.feed(this.buffer, (performance.now() - this.startedAt) / 1000);
+    const at = (performance.now() - this.startedAt) / 1000;
+    for (const listener of this.frameListeners) listener(this.buffer, at);
+    const heard = hearing.feed(this.buffer, at);
     if (!heard) return;
 
     for (const listener of this.heardListeners) listener(heard);

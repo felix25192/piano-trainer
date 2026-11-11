@@ -19,3 +19,9 @@ export function formatSize(bytes: number): string {
   if (kb < 1024) return `${Math.round(kb)} KB`;
   return `${(kb / 1024).toFixed(1)} MB`;
 }
+
+/** 192 seconds as "3:12 min". */
+export function minutes(seconds: number): string {
+  const whole = Math.round(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")} min`;
+}

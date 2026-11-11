@@ -28,7 +28,7 @@ Linie. Spike A ist in Safari auf dem iPad bestanden, gemessen und nicht
 vermutet.
 
 Veroeffentlicht unter <https://felix25192.github.io/piano-trainer/>, bei jedem
-Push auf `main` automatisch aktualisiert. 341 Tests.
+Push auf `main` automatisch aktualisiert. 354 Tests.
 
 **Seit dem 10.11. spielt auch ein MIDI-Keyboard die App**, beide Haende
 zugleich, am Rechner in Chrome und Edge. Am echten Kawai ist das noch nicht
@@ -40,7 +40,8 @@ damit 2 bis 4 erledigt.
 
 **Seit dem 11.11. gibt es den Tempo-Modus**: Die Markierung laeuft im Tempo
 weiter, und wo es nicht stimmte, bleibt ein Zeichen stehen. Offen sind damit
-nur noch die Testrunde und die zwei Haende ueber das Mikrofon.
+nur noch die Testrunde und die zwei Haende ueber das Mikrofon. Fuer die
+Testrunde schneidet die App seit dem 11.11. mit, was sie hoert.
 
 **Als Naechstes.** Der Mikrofonknopf ist gebaut, aber am Instrument noch nie
 ausprobiert - das ist der offene Faden. Am 24.09. hat sich gezeigt, dass er in
@@ -2299,3 +2300,79 @@ echten Anschlag liegt, ist nicht gemessen. Fuer den grosszuegigen Rhythmus
 ist das unkritisch, fuer einen strengen waere es die erste Messung. Und am
 Mikrofon gilt weiter: eine Hand, und was das Pedal verdeckt, erscheint als
 verpasst.
+
+## Die Testrunde liefert Daten (11.11.2026)
+
+Ohne Klavier gab es noch eins zu tun, das den letzten Schritt traegt: Die
+Testrunde haette Strichlisten geliefert und Screenshots von vier Zeilen
+Anschlagsprotokoll. Fuer die zwei Haende braucht es aber den Klang eines
+echten Klaviers. Jedes Modell und jede Einmessung kennt bisher nur die
+Studioaufnahmen, 12 cm ueber den Saiten.
+
+### Abgestimmt
+
+- **Mitschnitt in der App, nicht auf einer eigenen Seite.** Am iPad haelt nur
+  eine Seite das Mikrofon. Und gebraucht wird genau das, was die App gehoert
+  hat, neben dem, was sie daraus gemacht hat. Nur so laesst sich jeder
+  Anschlag hinterher am Pruefstand nachspielen.
+- **MIDI darf beim Mitschnitt als Zeuge angeschlossen bleiben.** Das ist die
+  eine Ausnahme von "immer nur eine Eingabe". Es schreibt Tasten und Pedal
+  ins Protokoll und gibt nichts an die Engine, doppelt gezaehlt wird also
+  nichts. Am Kawai ist das die Wahrheit neben der Aufnahme, und es misst, wie
+  viel spaeter das Mikrofon einen Anschlag stempelt. Diese Zahl fehlte dem
+  Tempo-Modus.
+
+### Kein zweiter Abgriff am Audio-Graphen
+
+Naheliegend waere ein AudioWorklet gewesen, ein zweiter Knoten im Graphen.
+Das waere am iPad eine neue Art, die eine Audio-Sitzung zu stoeren, und die
+sechs Audio-Punkte haetten neu gegolten. Stattdessen nimmt der Mitschnitt die
+Fenster, die die Hoerschleife ohnehin alle 10 ms liest. Sie ueberlappen sich
+fast ganz, und weil jedes Fenster eine Kopie derselben Samples ist, findet
+sich die Nahtstelle exakt, Bit fuer Bit (`core/stitch.ts`). Wo sie in Stille
+mehrdeutig ist, entscheidet die Uhr. Haengt die Seite laenger als ein Fenster
+(85 ms), fehlt ein Stueck. Es wird mit Stille gefuellt, damit die Zeitachse
+stimmt, und im Protokoll als Luecke vermerkt.
+
+Geprueft im Browser mit einem Sinus von 441 Hz als Mikrofon: 12 Sekunden
+Aufnahme, 5346 Schwingungen hintereinander, jede regelmaessig, die mittlere
+Periode auf vier Stellen die von 441 Hz, kein Sprung, keine Luecke. Die
+Hoerschleife erkannte den Ton dabei als A4 mit +4 Cent; 441 gegen 440 Hz sind
+3,9 Cent.
+
+### Was eine Aufnahme enthaelt
+
+Zwei Dateien je Sitzung, geteilt ueber das Teilen-Menue des Geraets:
+
+- **WAV**, 16 Bit, ein Kanal, in der Abtastrate des Geraets.
+- **JSON** mit dem ganzen Protokoll: jeder bemerkte Anschlag mit allen
+  Zahlen der Hoerschleife, was in dem Moment erwartet war und in welchem
+  Takt, dazu die Tasten und das Pedal vom MIDI-Zeugen, Ankerpunkte zwischen
+  Samples und Sekunden, die Luecken, und dasselbe noch einmal als Text.
+
+Das Protokoll laesst sich ausserdem als Text kopieren, zum Einfuegen im Chat.
+Die Zeilen sind nach der Zeit sortiert, so steht eine MIDI-Taste direkt neben
+dem Anschlag, den das Mikrofon dazu gehoert hat.
+
+### Die Testrunde
+
+`docs/TESTRUNDE.md` ist angepasst. Je Durchgang einmal Mikrofon an und aus,
+dann ist jeder Durchgang eine Aufnahme. Teil E schneidet am Laptop mit
+MIDI-Zeugen mit. Der neue Teil F nimmt das Menuett mit beiden Haenden im
+Tempo-Modus auf, mit und ohne Pedal. Das Mikrofon versteht die Akkorde dabei
+nicht, aber die Aufnahme liegt genau neben den Noten. Die Dateien gehoeren
+nach `lab/local/testrunde/`, das Git ignoriert.
+
+### Probe
+
+13 neue Tests, 354 insgesamt: das Zusammensetzen bei gleichmaessigem und
+unruhigem Takt, ungenauer Uhr, Stille und einer Luecke; die WAV-Datei; der
+Protokolltext; Tasten, Loslassen in beiden Schreibweisen und Pedal von MIDI.
+Im Browser ausser dem Sinus: MIDI schreibt mit und bewegt die Markierung
+nicht, der Schalter ist gesperrt, solange das Mikrofon hoert, ohne
+Mitschnitt gilt die alte Regel wieder. Am Audio-Graphen hat sich nichts
+geaendert; grep zeigt dieselben erlaubten Treffer.
+
+Am iPad ungeprueft, vor allem das Teilen-Menue mit zwei Dateien und wie viel
+Speicher Safari einer Seite laesst. Zwoelf Aufnahmen von je einer Minute sind
+rund 70 MB.

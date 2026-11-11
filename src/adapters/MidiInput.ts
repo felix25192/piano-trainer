@@ -1,5 +1,6 @@
 import type { NoteInputSource, NoteListener, PlayedNote } from "../core/NoteInputSource";
 import { isOnPiano } from "../core/pitch";
+import type { KeyEvent } from "../core/sessionLog";
 
 /**
  * Reads note onsets from a MIDI keyboard over the Web MIDI API.
@@ -21,6 +22,12 @@ const STATUS_MASK = 0xf0;
 /** Gets the names of the connected keyboards whenever one comes or goes. */
 export type DevicesListener = (names: string[]) => void;
 
+export type KeyEventListener = (event: KeyEvent) => void;
+
+const NOTE_OFF = 0x80;
+const CONTROL = 0xb0;
+const SUSTAIN = 64;
+
 export class MidiInput implements NoteInputSource {
   readonly name: string;
 
@@ -28,6 +35,7 @@ export class MidiInput implements NoteInputSource {
   private ports: MIDIInput[] = [];
   private listeners = new Set<NoteListener>();
   private deviceListeners = new Set<DevicesListener>();
+  private keyListeners = new Set<KeyEventListener>();
   /**
    * Counts stops, so a start still waiting for permission can tell that it
    * was called off meanwhile and must not attach to anything.
@@ -104,6 +112,18 @@ export class MidiInput implements NoteInputSource {
     };
   }
 
+  /**
+   * Every key down and up and every move of the sustain pedal. Not part of
+   * the port, which only wants struck notes: this is for a record of what
+   * the hands and the foot did, beside what the microphone heard.
+   */
+  onKeyEvent(listener: KeyEventListener): () => void {
+    this.keyListeners.add(listener);
+    return () => {
+      this.keyListeners.delete(listener);
+    };
+  }
+
   /** Names of the connected keyboards. */
   get deviceNames(): string[] {
     return this.ports.map((p) => p.name || "MIDI-Gerät ohne Namen");
@@ -144,6 +164,8 @@ export class MidiInput implements NoteInputSource {
     if (!data || data.length < 3) return;
 
     const [status, note, velocity] = data;
+    const time = event.timeStamp > 0 ? event.timeStamp : performance.now();
+    if (this.keyListeners.size > 0) this.report(status & STATUS_MASK, note, velocity, time);
 
     // Most keyboards, including the Kawai ES series, end a note by sending
     // note-on with velocity zero rather than an actual note-off message —
@@ -158,12 +180,20 @@ export class MidiInput implements NoteInputSource {
       midi: note,
       // When the keyboard said so, on the page's clock; the event carries it.
       // A browser that leaves it empty gets the moment it arrived instead.
-      time: event.timeStamp > 0 ? event.timeStamp : performance.now(),
+      time,
       // A key press is a fact, not an estimate.
       confidence: 1,
     };
 
     for (const listener of this.listeners) listener(played);
+  }
+  private report(kind: number, note: number, velocity: number, time: number): void {
+    let event: KeyEvent | null = null;
+    if (kind === NOTE_ON && velocity > 0) event = { kind: "down", midi: note, velocity, time };
+    else if (kind === NOTE_OFF || (kind === NOTE_ON && velocity === 0)) {
+      event = { kind: "up", midi: note, velocity, time };
+    } else if (kind === CONTROL && note === SUSTAIN) event = { kind: "pedal", down: velocity >= 64, time };
+    if (event) for (const listener of this.keyListeners) listener(event);
   }
 }
 
